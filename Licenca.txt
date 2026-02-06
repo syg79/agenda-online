@@ -1,0 +1,32 @@
+
+---
+
+## ✅ **RESUMO DOS ARQUIVOS**
+
+| Arquivo | Ação |
+|---------|------|
+| `prisma/schema.prisma` | **SUBSTITUIR** |
+| `.env.example` | **CRIAR/SUBSTITUIR** |
+| `.env` | **CRIAR** (local, não commitar) |
+| `lib/prisma.ts` | **CRIAR/SUBSTITUIR** |
+| `lib/constants.ts` | **CRIAR/SUBSTITUIR** |
+| `lib/utils.ts` | **CRIAR/SUBSTITUIR** |
+| `.gitignore` | **SUBSTITUIR** |
+| `prisma/seed.ts` | **SUBSTITUIR** |
+| `package.json` | **ATUALIZAR** (scripts e prisma) |
+| `README.md` | **SUBSTITUIR** |
+
+---
+
+## 🚀 **PRÓXIMOS PASSOS**
+
+1. Substitua os arquivos
+2. Crie o projeto no Supabase
+3. Configure as variáveis `.env`
+4. Execute:
+   ```bash
+   npm install
+   npm run db:generate
+   npm run db:migrate
+   npm run db:seed
+   npm run dev
