@@ -8,9 +8,9 @@
 
 ---
 **STATUS ATUAL (FEVEREIRO/2026):**
-- O frontend do fluxo de agendamento está bem avançado (`booking-form.tsx`).
-- Os passos de endereço, serviços, data e horário estão integrados com as APIs de backend (`/api/address/search`, `/api/address/validate`, `/api/availability`).
-- A etapa final de confirmação do agendamento (criação do booking no backend) e as funcionalidades de email e cancelamento ainda precisam ser implementadas.
+ - **MVP DEPLOYADO E FUNCIONAL** 🚀 (Vercel + Supabase + Gmail).
+ - Fluxo de agendamento completo: Endereço -> Serviços -> Data -> Confirmação -> Email.
+ - **IMPORTANTE (FASE 2):** O arquivo `prisma/seed.backup.ts` contém toda a estrutura avançada (Fotógrafos, Áreas de Cobertura, Configurações) pronta para ser reativada na próxima fase. O schema atual foi simplificado para garantir estabilidade do MVP.
 ---
 
 ## VISÃO GERAL DO PROJETO
@@ -227,12 +227,12 @@
 ### DIA 10: API de Agendamento (8-10h) - EM ANDAMENTO
 
 **API: Criar Agendamento** (8-10h)
-- [ ] **Validações** (Todos os campos, email, telefone, data, horário)
-- [ ] **Lock temporário** (Prevenir agendamentos duplicados)
-- [ ] **Alocar fotógrafo** (Escolher o mais próximo e disponível)
-- [ ] **Criar agendamento** (Salvar no banco)
+ - [x] **Validações** (Todos os campos, email, telefone, data, horário)
+ - [x] **Lock temporário** (Simplificado para MVP)
+ - [x] **Alocar fotógrafo** (Simplificado para MVP)
+ - [x] **Criar agendamento** (Salvar no banco)
 - [ ] **Integração Tadabase** (Enviar webhook)
-- [ ] **Testes**
+ - [x] **Testes**
 
 **Entregável:** API de agendamento completa
 
@@ -248,17 +248,17 @@
 - [x] **Passo 3: Calendário** (Busca de disponibilidade)
 - [x] **Passo 4: Horários** (Carregamento de slots da API)
 - [x] **Passo 5: Dados** (Validações client-side)
-- [ ] **Passo 6: Confirmação** (Enviar para API de agendamento)
+ - [x] **Passo 6: Confirmação** (Enviar para API de agendamento)
 
 **Entregável:** Fluxo completo integrado
 
 ---
 
-### DIA 13: Sistema de Emails (7-9h)
+### DIA 13: Sistema de Emails (7-9h) - CONCLUÍDO
 
-- [ ] Design e criação de templates de email
-- [ ] Integração com Resend para envio
-- [ ] Testes de envio e formatação
+ - [x] Design e criação de templates de email (HTML Básico)
+ - [x] Integração com Nodemailer/Gmail para envio
+ - [x] Testes de envio e formatação
 
 **Entregável:** Emails automáticos funcionando
 
@@ -284,12 +284,12 @@
 
 ---
 
-## SEMANA 4: TESTES E DEPLOY (30-40 horas) - A FAZER
+## SEMANA 4: TESTES E DEPLOY (30-40 horas) - EM ANDAMENTO
 
 ### DIA 16-17: Testes e Deploy Final (12-15h)
 
 - [ ] Testes End-to-End do fluxo completo
-- [ ] Deploy em Produção no Vercel
+ - [x] Deploy em Produção no Vercel
 - [ ] Configuração de monitoramento
 
 **Entregável:** MVP EM PRODUÇÃO! 🚀
