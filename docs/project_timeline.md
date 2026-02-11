@@ -293,3 +293,11 @@
 - [ ] Configuração de monitoramento
 
 **Entregável:** MVP EM PRODUÇÃO! 🚀
+
+---
+
+## PRÓXIMOS PASSOS (PÓS-DEPLOY)
+
+- [ ] **Painel Administrativo:** Dashboard para visualizar agendamentos (Próxima Prioridade).
+- [ ] **Integração Tadabase:** Webhook para sincronização externa.
+- [ ] **Refatoração (Técnica):** Aplicar sugestões A+B (Modularização e Hooks) no formulário quando houver nova feature no fluxo.

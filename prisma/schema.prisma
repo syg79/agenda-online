@@ -33,4 +33,31 @@ model Booking {
   date     DateTime // Data do serviço
   time     String   // Horário (ex: "14:30")
   duration Int      // Duração total em minutos
+
+  // Financeiro
+  price         Decimal? @db.Decimal(10, 2)
+  paymentStatus String   @default("PENDING") // PENDING, PAID, PARTIAL
+
+  // Relacionamento com Fotógrafo
+  photographerId String?
+  photographer   Photographer? @relation(fields: [photographerId], references: [id])
+}
+
+model Photographer {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  active    Boolean  @default(true)
+  bookings  Booking[]
+  timeBlocks TimeBlock[]
+}
+
+model TimeBlock {
+  id             String   @id @default(uuid())
+  photographerId String
+  date           DateTime
+  startTime      String
+  endTime        String
+  reason         String?
+  photographer   Photographer @relation(fields: [photographerId], references: [id])
 }

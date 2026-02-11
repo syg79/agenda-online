@@ -16,7 +16,8 @@ export async function POST(request: Request) {
       selectedServices,
       selectedDate,
       selectedTime,
-      totalDuration
+      totalDuration,
+      totalPrice
     } = body;
 
     // 1. Validação básica
@@ -46,7 +47,9 @@ export async function POST(request: Request) {
         date: new Date(selectedDate),
         time: selectedTime,
         duration: totalDuration,
-        status: 'CONFIRMED'
+        status: 'CONFIRMED',
+        price: totalPrice,
+        paymentStatus: 'PENDING'
       }
     });
 

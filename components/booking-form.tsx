@@ -287,6 +287,7 @@ function BookingForm({ companyName }: BookingFormProps) {
         selectedDate,
         selectedTime,
         totalDuration: getTotalDuration(),
+        totalPrice: getTotalPrice(),
       };
 
       const response = await fetch('/api/bookings', {

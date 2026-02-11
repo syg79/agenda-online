@@ -5,11 +5,18 @@ const prisma = new PrismaClient()
 async function main() {
   console.log('🌱 Iniciando seed...')
 
-  // Como estamos no MVP com schema simplificado (apenas tabela Booking),
-  // não podemos criar fotógrafos ou configurações complexas pois as tabelas não existem.
-  
-  // Limpa agendamentos antigos (opcional, cuidado em produção)
-  // await prisma.booking.deleteMany()
+  // Criar um fotógrafo padrão se não existir
+  const photographer = await prisma.photographer.upsert({
+    where: { email: 'fotografo@exemplo.com' },
+    update: {},
+    create: {
+      name: 'Fotógrafo Principal',
+      email: 'fotografo@exemplo.com',
+      active: true,
+    },
+  })
+
+  console.log(`📸 Fotógrafo garantido: ${photographer.name}`)
 
   console.log('✅ Seed finalizado com sucesso!')
 }
