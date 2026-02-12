@@ -78,8 +78,8 @@ export async function POST(request: Request) {
       </div>
     `;
 
-    // Não esperamos o email terminar para responder ao usuário (mais rápido)
-    sendEmail({
+    // No Vercel (Serverless), precisamos aguardar (await) ou a função é congelada antes de terminar.
+    await sendEmail({
       to: clientEmail,
       subject: `Confirmação de Agendamento: ${protocol}`,
       html: emailHtml
@@ -88,7 +88,7 @@ export async function POST(request: Request) {
     // 5. Integração com Tadabase (Service)
     // Passamos o booking recém criado. O service lida com campos opcionais.
     // Como acabou de criar, photographer é null/undefined, o que é correto.
-    tadabase.syncBooking(booking);
+    await tadabase.syncBooking(booking);
 
     // 5. Retornar sucesso
     return NextResponse.json({
