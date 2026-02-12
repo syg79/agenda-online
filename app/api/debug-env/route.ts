@@ -9,7 +9,7 @@ export async function GET() {
         TADABASE_APP_ID: process.env.TADABASE_APP_ID ? '✅ Loaded' : '❌ Missing',
         TADABASE_APP_KEY: process.env.TADABASE_APP_KEY ? '✅ Loaded' : '❌ Missing',
         TADABASE_APP_SECRET: process.env.TADABASE_APP_SECRET ?
-            (process.env.TADABASE_APP_SECRET.startsWith('vqP0') ? '✅ Correct Prefix' : '⚠️ Incorrect Prefix')
+            (process.env.TADABASE_APP_SECRET.substring(0, 4) + '...')
             : '❌ Missing',
         SOLICITACAO_TABLE_ID: process.env.SOLICITACAO_TABLE_ID ? '✅ Loaded' : '❌ Missing',
     };
