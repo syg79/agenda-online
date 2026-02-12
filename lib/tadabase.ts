@@ -224,7 +224,7 @@ export const tadabase = {
             // For now, let's trust the map.
 
             // Ensure unique values and remove empty strings
-            services = Array.from(new Set(services)).filter(s => s && s.trim() !== '');
+            services = Array.from(new Set<string>(services)).filter((s: string) => s && s.trim() !== '');
 
             // Default to 'Fotos' if list is empty, because app sends 'photo'
             if (services.length === 0) services.push('Fotos');
