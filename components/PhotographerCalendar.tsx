@@ -31,6 +31,10 @@ export default function PhotographerCalendar({ photographerId, initialBlocks }: 
         }
     }, [toast]);
 
+    const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+        setToast({ message, type });
+    };
+
     const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
     const firstDayOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay();
 

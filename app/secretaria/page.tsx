@@ -31,7 +31,8 @@ export default async function SecretaryPage() {
             time: b.time,
             duration: b.duration,
             clientName: b.clientName,
-            protocol: b.protocol
+            protocol: b.protocol,
+            services: b.services // Added services
         })),
         blocks: p.timeBlocks.map(b => ({
             id: b.id,
