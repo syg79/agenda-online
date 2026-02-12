@@ -303,8 +303,17 @@ export const tadabase = {
             const result = await response.json();
             return result;
 
-        } catch (error) {
+        } catch (error: any) {
             console.error('❌ Tadabase Sync Exception:', error);
+            if (error.response) {
+                console.error('Data:', error.response.data);
+                console.error('Status:', error.response.status);
+                console.error('Headers:', error.response.headers);
+            } else if (error.request) {
+                console.error('No response received:', error.request);
+            } else {
+                console.error('Error message:', error.message);
+            }
             return null;
         }
     }
