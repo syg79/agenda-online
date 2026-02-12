@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { sendEmail } from '@/lib/email';
+import { tadabase } from '@/lib/tadabase';
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    
+
     const {
       clientName,
       clientEmail,
@@ -80,6 +81,11 @@ export async function POST(request: Request) {
       html: emailHtml
     });
 
+    // 5. Integração com Tadabase (Service)
+    // Passamos o booking recém criado. O service lida com campos opcionais.
+    // Como acabou de criar, photographer é null/undefined, o que é correto.
+    tadabase.syncBooking(booking);
+
     // 5. Retornar sucesso
     return NextResponse.json({
       success: true,
@@ -89,7 +95,7 @@ export async function POST(request: Request) {
 
   } catch (error: any) {
     console.error('Erro ao criar agendamento:', error);
-    
+
     // Tratamento de erro específico do Prisma (ex: tabela não existe)
     if (error.code === 'P2021') {
       return NextResponse.json(

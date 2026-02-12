@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MapPin, Clock, Camera, Video, Plane, Check, ChevronRight, ChevronLeft, AlertCircle, Phone } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
 
 // Definições de tipos
 type Service = {
@@ -18,9 +19,10 @@ interface BookingFormProps {
 }
 
 function BookingForm({ companyName }: BookingFormProps) {
+  const searchParams = useSearchParams();
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
-  const [showPrices, setShowPrices] = useState(true); // Controle facultativo de preços
-  
+  const [showPrices, setShowPrices] = useState(false); // Controle facultativo de preços
+
   const services: Service[] = [
     { id: 'photo', name: 'Fotos', duration: 40, icon: Camera, description: 'Sessão fotográfica completa', price: 250 },
     { id: 'video_landscape', name: 'Vídeo Paisagem', duration: 50, icon: Video, description: 'Vídeo horizontal (YouTube)', price: 300 },
@@ -30,26 +32,52 @@ function BookingForm({ companyName }: BookingFormProps) {
   ];
 
   const [step, setStep] = useState(1);
-  const [address, setAddress] = useState('');
-  const [complement, setComplement] = useState('');
-  const [neighborhood, setNeighborhood] = useState('');
+
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedTime, setSelectedTime] = useState('');
+
+  // URL Params Pre-fill (State)
   const [clientName, setClientName] = useState('');
   const [clientEmail, setClientEmail] = useState('');
   const [clientPhone, setClientPhone] = useState('');
+
+  const [address, setAddress] = useState('');
+  const [neighborhood, setNeighborhood] = useState('');
+  const [complement, setComplement] = useState('');
   const [notes, setNotes] = useState('');
+
+  // Sync state with URL params when they change
+  useEffect(() => {
+    const pName = searchParams.get('nome');
+    const pEmail = searchParams.get('email');
+    const pPhone = searchParams.get('telefone');
+    const pAddress = searchParams.get('endereco');
+    const pNeighborhood = searchParams.get('bairro');
+    const pComplement = searchParams.get('complemento');
+    const pRef = searchParams.get('ref');
+
+    if (pName) setClientName(pName);
+    if (pEmail) setClientEmail(pEmail);
+    if (pPhone) setClientPhone(pPhone);
+    if (pAddress) setAddress(pAddress);
+    if (pNeighborhood) setNeighborhood(pNeighborhood);
+    if (pComplement) setComplement(pComplement);
+    if (pRef) setNotes(curr => curr.includes('Ref:') ? curr : (curr ? `${curr}\nRef: ${pRef}` : `Ref: ${pRef}`));
+  }, [searchParams]);
+
   const [error, setError] = useState('');
   const [protocol, setProtocol] = useState('');
   const [suggestions, setSuggestions] = useState<string[]>([]);
-  const [timeSlots, setTimeSlots] = useState<{time: string, endTime: string, available: number}[]>([]);
+  const [timeSlots, setTimeSlots] = useState<{ time: string, endTime: string, available: number }[]>([]);
+  const [isOutOfCoverage, setIsOutOfCoverage] = useState(false);
 
   const [isSearching, setIsSearching] = useState(false);
   const searchTimeout = React.useRef<NodeJS.Timeout | null>(null);
 
   const handleAddressInput = (value: string) => {
     setAddress(value);
+    setIsOutOfCoverage(false); // Reset
     setSuggestions([]);
 
     if (searchTimeout.current) {
@@ -78,12 +106,16 @@ function BookingForm({ companyName }: BookingFormProps) {
   const selectSuggestion = (suggestion: string) => {
     setAddress(suggestion);
     setSuggestions([]);
+    setIsOutOfCoverage(false); // Reset coverage check on new selection
   };
 
   const [isValidating, setIsValidating] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
 
   const validateAddress = async () => {
+    // Explicitly reset coverage error (fixes false positives)
+    setIsOutOfCoverage(false);
+
     setIsValidating(true);
     setError('');
     try {
@@ -152,10 +184,10 @@ function BookingForm({ companyName }: BookingFormProps) {
     }
     return total;
   };
-  
+
   const fetchAvailability = async (date: Date) => {
     if (!date || selectedServices.length === 0) return;
-    
+
     setIsLoadingSlots(true);
     setTimeSlots([]);
     setError('');
@@ -171,7 +203,7 @@ function BookingForm({ companyName }: BookingFormProps) {
       if (!response.ok) {
         throw new Error(data.error || 'Erro ao buscar horários.');
       }
-      
+
       setTimeSlots(data.slots || []);
       if (data.slots.length === 0) {
         setError('Nenhum horário disponível para esta data e serviços.');
@@ -185,6 +217,14 @@ function BookingForm({ companyName }: BookingFormProps) {
   };
 
   const handleDateSelect = (date: Date) => {
+    // If clicking the same date, deselect it
+    if (selectedDate && date.toDateString() === selectedDate.toDateString()) {
+      setSelectedDate(null);
+      setSelectedTime('');
+      setTimeSlots([]);
+      return;
+    }
+
     setSelectedDate(date);
     setSelectedTime('');
     fetchAvailability(date);
@@ -193,7 +233,7 @@ function BookingForm({ companyName }: BookingFormProps) {
   const generateCalendar = () => {
     const today = new Date();
     const calendar: any[] = [];
-    
+
     // Start calendar from the first day of the current month for alignment
     const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     const startingDayOfWeek = firstDayOfMonth.getDay();
@@ -202,12 +242,12 @@ function BookingForm({ companyName }: BookingFormProps) {
     for (let i = 0; i < startingDayOfWeek; i++) {
       calendar.push({ type: 'empty' });
     }
-    
+
     // Generate days for the next ~5 weeks
     for (let i = 1; i <= 35; i++) {
       const date = new Date(firstDayOfMonth);
       date.setDate(firstDayOfMonth.getDate() + i - 1);
-      
+
       const dayOfWeek = date.getDay();
       const isSunday = dayOfWeek === 0;
       const isPast = date < today && date.toDateString() !== today.toDateString();
@@ -222,20 +262,20 @@ function BookingForm({ companyName }: BookingFormProps) {
         isSunday: isSunday
       });
     }
-    
+
     const weeks = [];
     for (let i = 0; i < calendar.length; i += 7) {
       const weekDays = calendar.slice(i, i + 7);
       // Pega o mês do primeiro dia da semana para o título
       const firstDayOfWeek = weekDays.find(d => d.type === 'day') || weekDays[0];
       const monthName = firstDayOfWeek.date ? firstDayOfWeek.date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }) : '';
-      
+
       weeks.push({
         days: weekDays,
         monthName: monthName
       });
     }
-    
+
     return weeks.filter(week => week.days.some(d => d.type === 'day' && (d.month === today.getMonth() || d.month === (today.getMonth() + 1) % 12)));
   };
 
@@ -354,32 +394,77 @@ function BookingForm({ companyName }: BookingFormProps) {
       {step < 7 && (
         <div className="bg-white border-b">
           <div className="max-w-4xl mx-auto px-4 py-3">
-            <div className="flex items-center justify-between mb-2">
-              {[1, 2, 3, 4, 5, 6].map((s) => (
-                <div key={s} className="flex items-center flex-1">
-                  <div className={'w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ' + (s < step ? 'bg-green-500 text-white' : s === step ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-400')}>
-                    {s < step ? <Check className="w-4 h-4" /> : s}
+            {/* Desktop/Tablet Stepper */}
+            <div className="hidden md:flex items-center justify-between relative">
+              {/* Progress Bar Background */}
+              <div className="absolute top-4 left-0 w-full h-0.5 bg-slate-200 -z-10"></div>
+              {/* Active Progress Bar */}
+              <div
+                className="absolute top-4 left-0 h-0.5 bg-green-500 -z-10 transition-all duration-300"
+                style={{ width: `${((step - 1) / 5) * 100}%` }}
+              ></div>
+
+              {[1, 2, 3, 4, 5, 6].map((s) => {
+                let label = '';
+                if (s === 1) label = 'Endereço';
+                if (s === 2) label = 'Serviços';
+                if (s === 3) label = 'Data';
+                if (s === 4) label = 'Horário';
+                if (s === 5) label = 'Dados';
+                if (s === 6) label = 'Confirma';
+
+                return (
+                  <div key={s} className="flex flex-col items-center flex-1 z-10">
+                    <div
+                      className={'w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-colors duration-300 ' +
+                        (s < step ? 'bg-green-500 text-white' : s === step ? 'bg-blue-600 text-white ring-4 ring-blue-100' : 'bg-slate-200 text-slate-400')
+                      }
+                    >
+                      {s < step ? <Check className="w-4 h-4" /> : s}
+                    </div>
+                    <span className={`text-[10px] mt-1 font-medium uppercase tracking-wide ${s === step ? 'text-blue-600' : s < step ? 'text-green-600' : 'text-slate-400'}`}>
+                      {label}
+                    </span>
                   </div>
-                  {s < 6 && <div className={'h-1 flex-1 mx-1 ' + (s < step ? 'bg-green-500' : 'bg-slate-200')} />}
-                </div>
-              ))}
+                )
+              })}
             </div>
-            <p className="text-xs text-center text-slate-600">
-              {step === 1 ? 'Endereço' : step === 2 ? 'Serviços' : step === 3 ? 'Data' : step === 4 ? 'Horário' : step === 5 ? 'Dados' : 'Confirmação'}
-            </p>
+
+            {/* Mobile Stepper (Simplified) */}
+            <div className="md:hidden flex items-center justify-between">
+              <span className="text-sm font-bold text-slate-700">Etapa {step} de 6</span>
+              <div className="flex gap-1">
+                {[1, 2, 3, 4, 5, 6].map(s => (
+                  <div key={s} className={`h-1.5 w-6 rounded-full ${s <= step ? 'bg-blue-600' : 'bg-slate-200'}`}></div>
+                ))}
+              </div>
+            </div>
           </div>
+
+          {/* Persistent Address Info Bar (Step > 1) */}
+          {step > 1 && address && (
+            <div className="bg-slate-50 border-t px-4 py-2 text-sm text-slate-600 border-b flex justify-center">
+              <div className="max-w-4xl w-full flex items-center gap-2 truncate">
+                <MapPin className="w-4 h-4 text-blue-600 shrink-0" />
+                <span className="font-medium text-slate-800">Local:</span>
+                <span className="truncate">{address} {complement ? `- ${complement}` : ''}</span>
+                <button onClick={() => setStep(1)} className="ml-auto text-blue-600 hover:underline text-xs shrink-0">Alterar</button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
       <div className="max-w-4xl mx-auto px-4 py-6">
         <div className="bg-white rounded-lg shadow-lg p-6 md:p-8">
-          
+
           {step === 1 && (
             <div className="space-y-6">
               <div>
                 <h2 className="text-2xl font-bold text-slate-800 mb-2">Onde será a sessão?</h2>
                 <p className="text-slate-600">Informe o endereço completo</p>
               </div>
+
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Endereço Completo *</label>
                 <div className="relative">
@@ -389,26 +474,62 @@ function BookingForm({ companyName }: BookingFormProps) {
                     value={address}
                     onChange={(e) => handleAddressInput(e.target.value)}
                     placeholder="Digite o endereço..."
-                    className="w-full pl-11 pr-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className={`w-full pl-11 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 transition-colors ${isOutOfCoverage ? 'border-yellow-400 bg-yellow-50/50' : 'border-slate-300'}`}
                   />
+                  {isSearching && (
+                    <div className="absolute right-3 top-3.5">
+                      <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                    </div>
+                  )}
                 </div>
-                {isSearching && (
-                  <div className="px-4 py-3 text-sm text-slate-500">Buscando...</div>
-                )}
                 {suggestions.length > 0 && !isSearching && (
-                  <div className="mt-2 border border-slate-200 rounded-lg overflow-hidden">
+                  <div className="mt-2 border border-slate-200 rounded-lg overflow-hidden shadow-sm">
                     {suggestions.map((sug, idx) => (
                       <button
                         key={idx}
                         onClick={() => selectSuggestion(sug)}
-                        className="w-full text-left px-4 py-3 hover:bg-slate-50 border-b last:border-b-0 text-sm"
+                        className="w-full text-left px-4 py-3 hover:bg-slate-50 border-b last:border-b-0 text-sm flex items-center"
                       >
-                        <MapPin className="inline w-4 h-4 mr-2 text-slate-400" />{sug}
+                        <MapPin className="inline w-4 h-4 mr-2 text-slate-400 shrink-0" />
+                        <span className="truncate">{sug}</span>
                       </button>
                     ))}
                   </div>
                 )}
               </div>
+
+              {/* Coverage Alert - Non-intrusive */}
+              {(isOutOfCoverage || (error && error.toLowerCase().includes('não é atendida'))) && (
+                <div className="bg-yellow-50 border-l-4 border-yellow-400 p-5 rounded-r-lg animate-in slide-in-from-top-2 duration-300 mt-4">
+                  <div className="flex items-start gap-4">
+                    <div className="bg-yellow-100 p-2 rounded-full shrink-0">
+                      <AlertCircle className="w-6 h-6 text-yellow-600" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-bold text-yellow-900 mb-1 text-base">
+                        {isOutOfCoverage ? 'Endereço fora da área de cobertura' : 'Cidade não atendida via sistema'}
+                      </h3>
+                      <p className="text-sm text-yellow-800 mb-4 leading-relaxed">
+                        {isOutOfCoverage
+                          ? 'A cidade de São Paulo ainda não está disponível pela versão automatizada.'
+                          : error
+                        }
+                        <br />Por favor, entre em contato para verificar a disponibilidade.
+                      </p>
+                      <a
+                        href="https://wa.me/5541999999999"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold py-3 px-5 rounded-lg transition-all hover:shadow-md transform hover:-translate-y-0.5"
+                      >
+                        <Phone className="w-4 h-4" />
+                        <span>Chamar no WhatsApp: (41) 99999-9999</span>
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Complemento</label>
                 <input
@@ -419,23 +540,17 @@ function BookingForm({ companyName }: BookingFormProps) {
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-              {error && (
+
+              {/* General Errors (Network, Validation, Empty fields) */}
+              {error && !error.toLowerCase().includes('não é atendida') && (
                 <div className="flex items-start gap-2 p-4 bg-red-50 border border-red-200 rounded-lg">
                   <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
-                  <div className="text-sm text-red-800">
-                    {error}
-                    {error.includes('WhatsApp') && (
-                      <div className="mt-2">
-                        <a href="https://wa.me/5541999999999" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-green-600 font-semibold underline">
-                          <Phone className="w-4 h-4" />Clique para contato
-                        </a>
-                      </div>
-                    )}
-                  </div>
+                  <p className="text-sm text-red-800">{error}</p>
                 </div>
               )}
-              <button onClick={goNext} disabled={isValidating} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg flex items-center justify-center gap-2 disabled:bg-blue-400 disabled:cursor-not-allowed">
-                {isValidating ? 'Validando...' : 'Continuar'} <ChevronRight className="w-5 h-5" />
+
+              <button onClick={goNext} disabled={isValidating || isOutOfCoverage} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg flex items-center justify-center gap-2 disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed transition-colors">
+                {isValidating ? 'Validando endereço...' : 'Continuar'} <ChevronRight className="w-5 h-5" />
               </button>
             </div>
           )}
@@ -511,7 +626,7 @@ function BookingForm({ companyName }: BookingFormProps) {
                 <h2 className="text-2xl font-bold text-slate-800 mb-2">Qual o melhor dia?</h2>
                 <p className="text-slate-600">Selecione a data</p>
               </div>
-              
+
               <div className="space-y-6">
                 {generateCalendar().map((week, weekIdx) => (
                   <div key={weekIdx}>
@@ -562,7 +677,7 @@ function BookingForm({ companyName }: BookingFormProps) {
                   </div>
                 ))}
               </div>
-              
+
               {error && (
                 <div className="flex items-start gap-2 p-4 bg-red-50 border border-red-200 rounded-lg">
                   <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
@@ -596,14 +711,14 @@ function BookingForm({ companyName }: BookingFormProps) {
                     className={'p-4 border-2 rounded-lg transition ' + (selectedTime === slot.time ? 'border-blue-600 bg-blue-50' : 'border-slate-200 hover:border-blue-300')}
                   >
                     <div className={'text-lg font-semibold mb-1 ' + (selectedTime === slot.time ? 'text-blue-600' : 'text-slate-800')}>
-                      {slot.time} - {slot.endTime}
+                      {slot.time}
                     </div>
                     <div className="text-xs text-slate-500">{slot.available} fotógrafo(s)</div>
                   </button>
                 ))}
               </div>
               {!isLoadingSlots && timeSlots.length === 0 && !error && (
-                 <p className="text-slate-500 col-span-full text-center py-4">Nenhum horário encontrado para este dia. Tente outra data.</p>
+                <p className="text-slate-500 col-span-full text-center py-4">Nenhum horário encontrado para este dia. Tente outra data.</p>
               )}
               {error && (
                 <div className="flex items-start gap-2 p-4 bg-red-50 border border-red-200 rounded-lg">

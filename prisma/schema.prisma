@@ -48,8 +48,11 @@ model Photographer {
   name      String
   email     String   @unique
   active    Boolean  @default(true)
+  services  String[] // ["photo", "video", "drone"]
   bookings  Booking[]
   timeBlocks TimeBlock[]
+  regions   PhotographerRegion[]
+  preferences ClientPreference[]
 }
 
 model TimeBlock {
@@ -60,4 +63,46 @@ model TimeBlock {
   endTime        String
   reason         String?
   photographer   Photographer @relation(fields: [photographerId], references: [id])
+}
+
+// --- PHASE 3: ADVANCED MANAGEMENT ---
+
+model Client {
+  id          String   @id @default(uuid())
+  name        String
+  email       String   @unique
+  phone       String?
+  // Preferences
+  preferences ClientPreference[]
+}
+
+model ClientPreference {
+  id             String @id @default(uuid())
+  clientId       String
+  photographerId String
+  priority       Int    // 1 = High, 2 = Medium...
+  
+  client         Client       @relation(fields: [clientId], references: [id])
+  photographer   Photographer @relation(fields: [photographerId], references: [id])
+  
+  @@unique([clientId, photographerId])
+}
+
+model Region {
+  id             String   @id @default(uuid())
+  name           String   // e.g., "Zona Sul", "Centro"
+  cities         String[] // e.g., ["Curitiba", "São José dos Pinhais"]
+  neighborhoods  String[] // e.g., ["Batel", "Água Verde"] (Optional filter)
+  
+  photographers  PhotographerRegion[]
+}
+
+model PhotographerRegion {
+  photographerId String
+  regionId       String
+  
+  photographer   Photographer @relation(fields: [photographerId], references: [id])
+  region         Region       @relation(fields: [regionId], references: [id])
+  
+  @@id([photographerId, regionId])
 }
