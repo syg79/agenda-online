@@ -39,7 +39,7 @@ export default async function SecretaryPage() {
             date: b.date.toISOString().split('T')[0],
             startTime: b.startTime,
             endTime: b.endTime,
-            reason: b.reason
+            reason: b.reason || undefined // Handle null
         }))
     }));
 
