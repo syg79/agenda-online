@@ -44,6 +44,7 @@ function BookingForm({ companyName }: BookingFormProps) {
 
   const [address, setAddress] = useState('');
   const [neighborhood, setNeighborhood] = useState('');
+  const [zipCode, setZipCode] = useState('');
   const [complement, setComplement] = useState('');
   const [notes, setNotes] = useState('');
 
@@ -54,6 +55,7 @@ function BookingForm({ companyName }: BookingFormProps) {
     const pPhone = searchParams.get('telefone');
     const pAddress = searchParams.get('endereco');
     const pNeighborhood = searchParams.get('bairro');
+    const pZip = searchParams.get('cep');
     const pComplement = searchParams.get('complemento');
     const pRef = searchParams.get('ref');
 
@@ -62,6 +64,7 @@ function BookingForm({ companyName }: BookingFormProps) {
     if (pPhone) setClientPhone(pPhone);
     if (pAddress) setAddress(pAddress);
     if (pNeighborhood) setNeighborhood(pNeighborhood);
+    if (pZip) setZipCode(pZip);
     if (pComplement) setComplement(pComplement);
     if (pRef) setNotes(curr => curr.includes('Ref:') ? curr : (curr ? `${curr}\nRef: ${pRef}` : `Ref: ${pRef}`));
   }, [searchParams]);
@@ -142,6 +145,7 @@ function BookingForm({ companyName }: BookingFormProps) {
       }
 
       setNeighborhood(data.neighborhood);
+      setZipCode(data.zipCode || '');
       setError('');
       return true;
     } catch (err) {
@@ -323,6 +327,7 @@ function BookingForm({ companyName }: BookingFormProps) {
         address,
         complement,
         neighborhood,
+        zipCode,
         selectedServices,
         selectedDate,
         selectedTime,
@@ -359,6 +364,7 @@ function BookingForm({ companyName }: BookingFormProps) {
     setAddress('');
     setComplement('');
     setNeighborhood('');
+    setZipCode('');
     setSelectedServices([]);
     setSelectedDate(null);
     setSelectedTime('');
@@ -801,24 +807,15 @@ function BookingForm({ companyName }: BookingFormProps) {
                 </div>
                 <div className="bg-slate-50 rounded-lg p-4">
                   <h3 className="font-semibold text-slate-700 mb-2">Data e Horário</h3>
-                  <p className="text-slate-600">{selectedDate && selectedDate.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
-                  <p className="text-sm text-slate-500">Horário: {selectedTime}</p>
+                  <p className="text-slate-600">{selectedDate?.toLocaleDateString('pt-BR')} às {selectedTime}</p>
                 </div>
                 <div className="bg-slate-50 rounded-lg p-4">
                   <h3 className="font-semibold text-slate-700 mb-2">Seus Dados</h3>
                   <p className="text-slate-600">{clientName}</p>
                   <p className="text-sm text-slate-500">{clientEmail}</p>
                   <p className="text-sm text-slate-500">{clientPhone}</p>
-                  {notes && <p className="text-sm text-slate-500 mt-2">Obs: {notes}</p>}
+                  {notes && <p className="text-sm text-slate-500 mt-1">Obs: {notes}</p>}
                 </div>
-              </div>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h3 className="font-medium text-blue-900 mb-2">Importante</h3>
-                <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
-                  <li>Confirmação por email e WhatsApp</li>
-                  <li>Cancelamento gratuito até 24h antes</li>
-                  <li>Fotógrafo entra em contato 24h antes</li>
-                </ul>
               </div>
               {error && (
                 <div className="flex items-start gap-2 p-4 bg-red-50 border border-red-200 rounded-lg">
@@ -827,48 +824,35 @@ function BookingForm({ companyName }: BookingFormProps) {
                 </div>
               )}
               <div className="flex gap-3">
-                <button onClick={() => setStep(5)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-3 px-6 rounded-lg flex items-center justify-center gap-2">
+                <button onClick={() => setStep(5)} disabled={isConfirming} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-3 px-6 rounded-lg flex items-center justify-center gap-2">
                   <ChevronLeft className="w-5 h-5" />Voltar
                 </button>
-                <button onClick={confirm} disabled={isConfirming} className="flex-1 bg-green-600 hover:bg-green-700 text-white font-medium py-3 px-6 rounded-lg flex items-center justify-center gap-2 disabled:bg-green-400 disabled:cursor-not-allowed">
-                  {isConfirming ? 'Confirmando...' : (
-                    <><Check className="w-5 h-5" />Confirmar</>
-                  )}
+                <button onClick={confirm} disabled={isConfirming} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg flex items-center justify-center gap-2 disabled:bg-blue-400">
+                  {isConfirming ? 'Confirmando...' : 'Confirmar Agendamento'} <Check className="w-5 h-5" />
                 </button>
               </div>
             </div>
           )}
 
           {step === 7 && (
-            <div className="space-y-6 text-center">
-              <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+            <div className="text-center py-10">
+              <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6 animate-in zoom-in duration-300">
                 <Check className="w-10 h-10 text-green-600" />
               </div>
-              <div>
-                <h2 className="text-2xl font-bold text-slate-800 mb-2">Confirmado!</h2>
-                <p className="text-slate-600">Agendamento realizado</p>
+              <h2 className="text-3xl font-bold text-slate-800 mb-4">Agendamento Confirmado!</h2>
+              <p className="text-slate-600 mb-6 max-w-md mx-auto">
+                Seu agendamento foi realizado com sucesso. Enviamos os detalhes para o seu email.
+              </p>
+              <div className="bg-slate-50 rounded-lg p-6 max-w-sm mx-auto mb-8 border border-slate-200">
+                <p className="text-sm text-slate-500 mb-1">Protocolo</p>
+                <p className="text-2xl font-mono font-bold text-slate-800 tracking-wider select-all">{protocol}</p>
               </div>
-              <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6">
-                <p className="text-sm text-slate-600 mb-2">Protocolo</p>
-                <p className="text-3xl font-bold text-blue-600">{protocol}</p>
-              </div>
-              <div className="bg-slate-50 rounded-lg p-4 text-left">
-                <h3 className="font-semibold text-slate-700 mb-3">Resumo</h3>
-                <div className="space-y-2 text-sm">
-                  <p>Data: {selectedDate && selectedDate.toLocaleDateString('pt-BR')}</p>
-                  <p>Horário: {selectedTime}</p>
-                  <p>Serviços: {getServiceNames()}</p>
-                  <p>Duração: {getTotalDuration()} min</p>
-                  {showPrices && (
-                    <p className="font-semibold">Valor Total: R$ {getTotalPrice()},00</p>
-                  )}
-                </div>
-              </div>
-              <button onClick={reset} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg flex items-center justify-center gap-2">
+              <button onClick={reset} className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-8 rounded-lg transition-colors">
                 Novo Agendamento
               </button>
             </div>
           )}
+
         </div>
       </div>
     </div>

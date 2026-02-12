@@ -14,6 +14,8 @@ export async function POST(request: Request) {
       notes,
       address,
       neighborhood,
+      zipCode,
+      complement,
       selectedServices,
       selectedDate,
       selectedTime,
@@ -44,6 +46,8 @@ export async function POST(request: Request) {
         notes,
         address,
         neighborhood,
+        zipCode,
+        complement,
         services: selectedServices, // Array de strings
         date: new Date(selectedDate),
         time: selectedTime,

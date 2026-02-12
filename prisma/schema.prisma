@@ -24,6 +24,10 @@ model Booking {
   // Endereço
   address      String
   neighborhood String
+  city         String   @default("Curitiba")
+  state        String   @default("PR")
+  zipCode      String?
+  complement   String?  // Complemento (Apto, Bloco, etc.)
 
   // Detalhes do Serviço
   services String[] // Array de strings (ex: ["Fotos HDR", "Drone"])

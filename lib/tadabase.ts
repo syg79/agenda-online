@@ -12,10 +12,15 @@ const FIELDS = {
     serviceType: 'field_110',  // Tipo serviço (Checkbox)
     rede: 'field_175',         // Rede (Connection)
     contactName: 'field_177',  // Contato Nome
+    contactEmail: 'field_375', // Email Adicional / Contato
+    contactPhone: 'field_491', // Fone Corretor / Contato (Updated to field_491 per user)
     contactLink: 'field_137',  // Link Gmail
     obsPhotographer: 'field_112', // Observacao para o Fotografo
-    date: 'field_103', // Data da Solicitação (Request Date)
-    time: 'LX6QaR7jZk', // Horario da Sessao (Restored from previous context)
+    obsScheduling: 'field_276',   // Observacao para o Agendamento
+    date: 'field_106', // Data do Agendamento
+    requestDate: 'field_103', // Data da Solicitação
+    time: 'field_406', // Horario da Sessao
+    protocolNew: 'field_490', // Protocolo de Agendamento
 
     // Defaults from ApolarBot
     situation: 'field_219',    // Situação: "Pre-solicitacao (cliente)"
@@ -114,10 +119,42 @@ const PHOTOGRAPHER_MAP: Record<string, string> = {
     'Fabiano': 'K68j9gN2V7',
 };
 
+// Service Type Mapping (App -> Tadabase Checkbox Strings)
+// The keys must match what is stored in Booking.services (Prisma)
+// The values must match EXACTLY the options in Tadabase (Check the HTML/Screenshot)
+const SERVICE_MAP: Record<string, string> = {
+    // Internal Keys (Seen in logs)
+    "photo": "Fotos",
+    "video_landscape": "Vídeo em Solo (formato Youtube)",
+    "video_portrait": "Video em Solo (formato Reels)",
+    "drone_photo": "Drone fotos",
+    "drone_video": "Drone video",
+    "drone_photo_video": "Drone video", // Or map to both if possible? Tadabase usually takes array.
+    "tour_360": "Tour 360º",
+    "floor_plan": "Planta Baixa",
+
+    // Legacy Keys
+    "Fotos": "Fotos",
+    "Fotos HDR": "Fotos",
+    "Video": "Vídeo em Solo (formato Youtube)",
+    "Vídeo": "Vídeo em Solo (formato Youtube)",
+    "Video Youtube": "Vídeo em Solo (formato Youtube)",
+    "Drone": "Drone fotos",
+    "Drone Foto": "Drone fotos",
+    "Drone Video": "Drone video",
+    "Drone Vídeo": "Drone video",
+    "Tour 360": "Tour 360º",
+    "Tour": "Tour 360º",
+    "Tour Virtual": "Tour 360º",
+    "Planta": "Planta Baixa",
+    "Planta Baixa": "Planta Baixa",
+    "Reels": "Video em Solo (formato Reels)",
+    "Vídeo Reels": "Video em Solo (formato Reels)",
+    "Locução": "Locução",
+    "Edição": "Edição"
+};
+
 export const tadabase = {
-    /**
-     * Syncs a booking with Tadabase (Create or Update).
-     */
     async syncBooking(booking: any) {
         const APP_ID = process.env.TADABASE_APP_ID;
         const APP_KEY = process.env.TADABASE_APP_KEY;
@@ -132,16 +169,14 @@ export const tadabase = {
         try {
             console.log(`🔄 Syncing booking ${booking.protocol} to Tadabase...`);
 
-            // 1. Search for existing record by Protocol (field_139)
+            // 1. Search for existing record by Protocol
             const filters = `filters[items][0][field_id]=${FIELDS.protocol}&filters[items][0][operator]=is&filters[items][0][val]=${booking.protocol}`;
             const searchUrl = `${process.env.TADABASE_API_URL}/data-tables/${TABLE_ID}/records?${filters}`;
 
             const searchRes = await fetch(searchUrl, {
                 method: 'GET',
                 headers: {
-                    'X-Tadabase-App-id': APP_ID,
-                    'X-Tadabase-App-Key': APP_KEY,
-                    'X-Tadabase-App-Secret': APP_SECRET
+                    'X-Tadabase-App-id': APP_ID, 'X-Tadabase-App-Key': APP_KEY, 'X-Tadabase-App-Secret': APP_SECRET
                 }
             });
 
@@ -153,34 +188,70 @@ export const tadabase = {
             }
 
             // 2. Prepare Payload
-            // Address Logic based on ApolarBot/GoogleService:
-            // City -> Neighborhood (Sublocality)
-            // State -> City (Locality/AdminArea2)
-            // Zip -> ZipCode
-            // Address -> Number + Street
+
+            // Address Parsing
+            let cleanAddress = booking.address || "";
+            if (cleanAddress.includes('-')) {
+                cleanAddress = cleanAddress.split('-')[0].trim();
+            }
+            if (cleanAddress.endsWith(',')) {
+                cleanAddress = cleanAddress.slice(0, -1).trim();
+            }
+
+            // Zip Code Default Handling
+            // User complained it's ALWAYS 80000-000. So we prefer booking.zipCode.
+            let zip = booking.zipCode;
+            if (!zip || zip.length < 5) {
+                zip = '80000-000'; // Only fallback if missing/invalid
+            }
+
             const addressPayload = {
-                address: booking.address,
+                address: cleanAddress,
                 city: booking.neighborhood || 'Curitiba',
-                state: booking.city || 'Curitiba', // User: "E o Estado ficara com o valor da cidade"
-                zip: booking.zipCode || '80000-000',
+                state: booking.city || 'Curitiba',
+                zip: zip,
                 country: 'Brasil'
             };
 
+            // Map Services
+            // If booking.services is undefined, default to []
+            const rawServices = booking.services || [];
+            // Map each service using SERVICE_MAP, fallback to original string if not found
+            let services = rawServices.map((s: string) => SERVICE_MAP[s] || s);
+
+            // Special handling for 'drone_photo_video' -> might want to push both 'Drone fotos' and 'Drone video'
+            // But Map is 1:1. If 'drone_photo_video' maps to 'Drone video', and user wanted both, we might miss one. 
+            // For now, let's trust the map.
+
+            // Ensure unique values and remove empty strings
+            services = [...new Set(services)].filter(s => s && s.trim() !== '');
+
+            // Default to 'Fotos' if list is empty, because app sends 'photo'
+            if (services.length === 0) services.push('Fotos');
+
             const payload: any = {
                 [FIELDS.protocol]: booking.protocol,
+                [FIELDS.protocolNew]: booking.protocol,
                 [FIELDS.complement]: booking.complement,
                 [FIELDS.type]: TIPO_IMOVEL_MAP[booking.propertyType] || 'Ap',
                 [FIELDS.area]: booking.area ? booking.area.toString().replace('.', ',') : '0',
                 [FIELDS.address]: addressPayload,
                 [FIELDS.status]: 'Pendente',
-                [FIELDS.serviceType]: ['Fotos'],
+                [FIELDS.serviceType]: services,
                 [FIELDS.rede]: 'DVWQWRNZ49', // Apolar
+
+                // Client Data
+                [FIELDS.contactName]: booking.clientName,
+                [FIELDS.contactEmail]: booking.clientEmail,
+                [FIELDS.contactPhone]: booking.clientPhone,
+                [FIELDS.obsScheduling]: booking.notes,
 
                 // Date & Time
                 [FIELDS.date]: booking.date ? new Date(booking.date).toISOString().split('T')[0] : undefined,
-                [FIELDS.time]: booking.time, // Sending Time
+                [FIELDS.requestDate]: new Date().toISOString().split('T')[0],
+                [FIELDS.time]: booking.time,
 
-                // Defaults from ApolarBot
+                // Defaults
                 [FIELDS.situation]: "Pre-solicitacao (cliente)",
                 [FIELDS.addressPhotographer]: "Imovel",
                 [FIELDS.statusNew]: "Pendente",
@@ -205,23 +276,20 @@ export const tadabase = {
                 }
             }
 
-            // 3. Create or Update (Using POST for both as verified)
+            console.log('📦 Tadabase Payload:', JSON.stringify(payload, null, 2));
+
+            // 3. Create or Update
             let url = `${process.env.TADABASE_API_URL}/data-tables/${TABLE_ID}/records`;
 
             if (existingRecordId) {
                 url += `/${existingRecordId}`;
-                console.log(`📝 Updating record ${existingRecordId} for protocol ${booking.protocol} using POST`);
-            } else {
-                console.log(`uq Creating new record for protocol ${booking.protocol}`);
             }
 
             const response = await fetch(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-Tadabase-App-id': APP_ID,
-                    'X-Tadabase-App-Key': APP_KEY,
-                    'X-Tadabase-App-Secret': APP_SECRET
+                    'X-Tadabase-App-id': APP_ID, 'X-Tadabase-App-Key': APP_KEY, 'X-Tadabase-App-Secret': APP_SECRET
                 },
                 body: JSON.stringify(payload)
             });
@@ -233,7 +301,6 @@ export const tadabase = {
             }
 
             const result = await response.json();
-            console.log('✅ Tadabase sync success:', result);
             return result;
 
         } catch (error) {

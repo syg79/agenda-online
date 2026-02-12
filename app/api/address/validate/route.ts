@@ -28,34 +28,46 @@ export async function POST(request: Request) {
 
     const result = data.results[0];
     const addressComponents = result.address_components;
-    
+
     let city = '';
     let neighborhood = '';
+    let zipCode = '';
+    let state = '';
 
     for (const component of addressComponents) {
       if (component.types.includes('administrative_area_level_2')) {
         city = component.long_name;
       }
+      if (component.types.includes('administrative_area_level_1')) {
+        state = component.short_name;
+      }
       if (component.types.includes('sublocality') || component.types.includes('sublocality_level_1')) {
         neighborhood = component.long_name;
+      }
+      if (component.types.includes('postal_code')) {
+        zipCode = component.long_name;
       }
     }
 
     // Lógica de Cobertura: Aceitar APENAS Curitiba
     const allowedCity = 'Curitiba';
-    
+
     if (city === allowedCity) {
       return NextResponse.json({
         inCoverage: true,
         city,
         neighborhood,
+        state,
+        zipCode,
         formattedAddress: result.formatted_address,
       });
     } else {
       return NextResponse.json({
         inCoverage: false,
         city,
-        neighborhood
+        neighborhood,
+        state,
+        zipCode
       });
     }
 
