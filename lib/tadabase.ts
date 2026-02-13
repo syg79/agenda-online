@@ -155,6 +155,72 @@ const SERVICE_MAP: Record<string, string> = {
 };
 
 export const tadabase = {
+    async findRecordByProtocol(protocol: string) {
+        const APP_ID = process.env.TADABASE_APP_ID;
+        const APP_KEY = process.env.TADABASE_APP_KEY;
+        const APP_SECRET = process.env.TADABASE_APP_SECRET;
+        const TABLE_ID = process.env.SOLICITACAO_TABLE_ID;
+
+        if (!APP_ID || !APP_KEY || !APP_SECRET || !TABLE_ID) return null;
+
+        try {
+            const filters = `filters[items][0][field_id]=${FIELDS.protocol}&filters[items][0][operator]=is&filters[items][0][val]=${protocol}`;
+            const searchUrl = `${process.env.TADABASE_API_URL}/data-tables/${TABLE_ID}/records?${filters}`;
+
+            const searchRes = await fetch(searchUrl, {
+                method: 'GET',
+                headers: {
+                    'X-Tadabase-App-id': APP_ID, 'X-Tadabase-App-Key': APP_KEY, 'X-Tadabase-App-Secret': APP_SECRET
+                }
+            });
+
+            if (!searchRes.ok) return null;
+
+            const searchData = await searchRes.json();
+            if (searchData.items && searchData.items.length > 0) {
+                return searchData.items[0];
+            }
+            return null;
+        } catch (error) {
+            console.error('Error finding record:', error);
+            return null;
+        }
+    },
+
+    async getFormattedBooking(protocol: string) {
+        const record = await this.findRecordByProtocol(protocol);
+        if (!record) return null;
+
+        // Helpers for reverse mapping
+        const reverseServiceMap = (val: string) => Object.keys(SERVICE_MAP).find(key => SERVICE_MAP[key] === val) || val;
+        // Invert keys/values of TIPO_IMOVEL_MAP for lookup (value -> key)
+        const reverseTypeMap = (val: string) => Object.keys(TIPO_IMOVEL_MAP).find(key => TIPO_IMOVEL_MAP[key] === val) || val;
+
+        // Address is stored as Object in Tadabase (field_94)
+        // Structure: { address: '...', city: '...', state: '...', zip: '...', country: '...' }
+        // BUT we mapped: city -> neighborhood, state -> city. 
+        // So when reading back: address.city is Neighborhood, address.state is City.
+        const addressObj = record[FIELDS.address] || {};
+
+        return {
+            protocol: record[FIELDS.protocol],
+            clientName: record[FIELDS.contactName], // field_177
+            clientEmail: record[FIELDS.contactEmail], // field_375
+            clientPhone: record[FIELDS.contactPhone], // field_491
+            address: addressObj.address,
+            neighborhood: addressObj.city, // Mapped from city -> neighborhood
+            city: addressObj.state, // Mapped from state -> city
+            zipCode: addressObj.zip,
+            complement: record[FIELDS.complement],
+            propertyType: reverseTypeMap(record[FIELDS.type]),
+            area: record[FIELDS.area],
+            services: (record[FIELDS.serviceType] || []).map(reverseServiceMap),
+            date: record[FIELDS.date], // YYYY-MM-DD
+            time: record[FIELDS.time],
+            notes: record[FIELDS.obsScheduling]
+        };
+    },
+
     async syncBooking(booking: any) {
         const APP_ID = process.env.TADABASE_APP_ID;
         const APP_KEY = process.env.TADABASE_APP_KEY;
@@ -170,20 +236,10 @@ export const tadabase = {
             console.log(`🔄 Syncing booking ${booking.protocol} to Tadabase...`);
 
             // 1. Search for existing record by Protocol
-            const filters = `filters[items][0][field_id]=${FIELDS.protocol}&filters[items][0][operator]=is&filters[items][0][val]=${booking.protocol}`;
-            const searchUrl = `${process.env.TADABASE_API_URL}/data-tables/${TABLE_ID}/records?${filters}`;
+            const existingRecord = await this.findRecordByProtocol(booking.protocol);
+            let existingRecordId = existingRecord ? existingRecord.id : null;
 
-            const searchRes = await fetch(searchUrl, {
-                method: 'GET',
-                headers: {
-                    'X-Tadabase-App-id': APP_ID, 'X-Tadabase-App-Key': APP_KEY, 'X-Tadabase-App-Secret': APP_SECRET
-                }
-            });
-
-            const searchData = await searchRes.json();
-            let existingRecordId = null;
-            if (searchData.items && searchData.items.length > 0) {
-                existingRecordId = searchData.items[0].id;
+            if (existingRecordId) {
                 console.log(`🔎 Found existing record: ${existingRecordId}`);
             }
 
@@ -236,7 +292,6 @@ export const tadabase = {
                 [FIELDS.type]: TIPO_IMOVEL_MAP[booking.propertyType] || 'Ap',
                 [FIELDS.area]: booking.area ? booking.area.toString().replace('.', ',') : '0',
                 [FIELDS.address]: addressPayload,
-                [FIELDS.status]: 'Pendente',
                 [FIELDS.serviceType]: services,
                 [FIELDS.rede]: 'DVWQWRNZ49', // Apolar
 
@@ -250,6 +305,9 @@ export const tadabase = {
                 [FIELDS.date]: booking.date ? new Date(booking.date).toISOString().split('T')[0] : undefined,
                 [FIELDS.requestDate]: new Date().toISOString().split('T')[0],
                 [FIELDS.time]: booking.time,
+
+                // Status Mapping (Prisma -> Tadabase)
+                [FIELDS.status]: booking.status === 'CANCELED' ? 'Cancelado' : (booking.photographer ? 'Agendado' : 'Pendente'),
 
                 // Defaults
                 [FIELDS.situation]: "Pre-solicitacao (cliente)",
@@ -282,7 +340,10 @@ export const tadabase = {
             let url = `${process.env.TADABASE_API_URL}/data-tables/${TABLE_ID}/records`;
 
             if (existingRecordId) {
+                console.log(`📝 Updating record ${existingRecordId}...`);
                 url += `/${existingRecordId}`;
+            } else {
+                console.log(`✨ Creating new record...`);
             }
 
             const response = await fetch(url, {

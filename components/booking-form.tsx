@@ -50,23 +50,75 @@ function BookingForm({ companyName }: BookingFormProps) {
 
   // Sync state with URL params when they change
   useEffect(() => {
-    const pName = searchParams.get('nome');
-    const pEmail = searchParams.get('email');
-    const pPhone = searchParams.get('telefone');
-    const pAddress = searchParams.get('endereco');
-    const pNeighborhood = searchParams.get('bairro');
-    const pZip = searchParams.get('cep');
-    const pComplement = searchParams.get('complemento');
-    const pRef = searchParams.get('ref');
+    const pProtocol = searchParams.get('protocol');
 
-    if (pName) setClientName(pName);
-    if (pEmail) setClientEmail(pEmail);
-    if (pPhone) setClientPhone(pPhone);
-    if (pAddress) setAddress(pAddress);
-    if (pNeighborhood) setNeighborhood(pNeighborhood);
-    if (pZip) setZipCode(pZip);
-    if (pComplement) setComplement(pComplement);
-    if (pRef) setNotes(curr => curr.includes('Ref:') ? curr : (curr ? `${curr}\nRef: ${pRef}` : `Ref: ${pRef}`));
+    if (pProtocol) {
+      // Situation 2: Fetch data from Tadabase
+      const fetchBooking = async () => {
+        try {
+          // Show some loading state if needed, or just fill
+          setIsSearching(true);
+          const res = await fetch(`/api/tadabase/booking?protocol=${pProtocol}`);
+          if (res.ok) {
+            const data = await res.json();
+
+            // Fill Fields
+            if (data.clientName) setClientName(data.clientName);
+            if (data.clientEmail) setClientEmail(data.clientEmail);
+            if (data.clientPhone) setClientPhone(data.clientPhone);
+
+            if (data.address) {
+              setAddress(data.address);
+              // Validate address implicit check? or just set it.
+              // If we have address/neighborhood, we can assume it's valid or let user check.
+            }
+            if (data.neighborhood) setNeighborhood(data.neighborhood);
+            if (data.zipCode) setZipCode(data.zipCode);
+            if (data.complement) setComplement(data.complement);
+            if (data.notes) setNotes(data.notes);
+
+            if (data.services && Array.isArray(data.services)) {
+              setSelectedServices(data.services);
+            }
+
+            // If we have Address and Services, jump to Date selection (Step 3)
+            if (data.address && data.services && data.services.length > 0) {
+              setStep(3);
+              // Trigger address validation in background to ensure coords? 
+              // Maybe skip for now, relying on text address.
+            } else if (data.address) {
+              setStep(2); // Go to Services
+            }
+
+          }
+        } catch (error) {
+          console.error('Error fetching protocol data:', error);
+        } finally {
+          setIsSearching(false);
+        }
+      };
+
+      fetchBooking();
+    } else {
+      // Legacy/Standard Params
+      const pName = searchParams.get('nome');
+      const pEmail = searchParams.get('email');
+      const pPhone = searchParams.get('telefone');
+      const pAddress = searchParams.get('endereco');
+      const pNeighborhood = searchParams.get('bairro');
+      const pZip = searchParams.get('cep');
+      const pComplement = searchParams.get('complemento');
+      const pRef = searchParams.get('ref');
+
+      if (pName) setClientName(pName);
+      if (pEmail) setClientEmail(pEmail);
+      if (pPhone) setClientPhone(pPhone);
+      if (pAddress) setAddress(pAddress);
+      if (pNeighborhood) setNeighborhood(pNeighborhood);
+      if (pZip) setZipCode(pZip);
+      if (pComplement) setComplement(pComplement);
+      if (pRef) setNotes(curr => curr.includes('Ref:') ? curr : (curr ? `${curr}\nRef: ${pRef}` : `Ref: ${pRef}`));
+    }
   }, [searchParams]);
 
   const [error, setError] = useState('');
