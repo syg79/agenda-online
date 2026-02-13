@@ -164,22 +164,46 @@ export const tadabase = {
         if (!APP_ID || !APP_KEY || !APP_SECRET || !TABLE_ID) return null;
 
         try {
-            const filters = `filters[items][0][field_id]=${FIELDS.protocol}&filters[items][0][operator]=is&filters[items][0][val]=${protocol}`;
-            const searchUrl = `${process.env.TADABASE_API_URL}/data-tables/${TABLE_ID}/records?${filters}`;
+            // Try Field 139 (Referencia)
+            let filters = `filters[items][0][field_id]=${FIELDS.protocol}&filters[items][0][operator]=is&filters[items][0][val]=${protocol}`;
+            let searchUrl = `${process.env.TADABASE_API_URL}/data-tables/${TABLE_ID}/records?${filters}`;
 
-            const searchRes = await fetch(searchUrl, {
+            // console.log(`🔎 Searching Field 139: ${searchUrl}`); // Debug
+
+            let searchRes = await fetch(searchUrl, {
                 method: 'GET',
                 headers: {
                     'X-Tadabase-App-id': APP_ID, 'X-Tadabase-App-Key': APP_KEY, 'X-Tadabase-App-Secret': APP_SECRET
                 }
             });
 
-            if (!searchRes.ok) return null;
-
-            const searchData = await searchRes.json();
-            if (searchData.items && searchData.items.length > 0) {
-                return searchData.items[0];
+            if (searchRes.ok) {
+                const searchData = await searchRes.json();
+                if (searchData.items && searchData.items.length > 0) {
+                    return searchData.items[0];
+                }
             }
+
+            // Fallback: Try Field 490 (Protocolo de Agendamento)
+            filters = `filters[items][0][field_id]=${FIELDS.protocolNew}&filters[items][0][operator]=is&filters[items][0][val]=${protocol}`;
+            searchUrl = `${process.env.TADABASE_API_URL}/data-tables/${TABLE_ID}/records?${filters}`;
+
+            // console.log(`🔎 Searching Field 490: ${searchUrl}`); // Debug
+
+            searchRes = await fetch(searchUrl, {
+                method: 'GET',
+                headers: {
+                    'X-Tadabase-App-id': APP_ID, 'X-Tadabase-App-Key': APP_KEY, 'X-Tadabase-App-Secret': APP_SECRET
+                }
+            });
+
+            if (searchRes.ok) {
+                const searchData = await searchRes.json();
+                if (searchData.items && searchData.items.length > 0) {
+                    return searchData.items[0];
+                }
+            }
+
             return null;
         } catch (error) {
             console.error('Error finding record:', error);
