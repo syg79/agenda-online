@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getAvailability } from '@/lib/services/availabilityService';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,62 +17,46 @@ export async function GET(request: Request) {
     const addLog = (msg: string, data?: any) => log.push({ msg, data, time: new Date().toISOString() });
 
     try {
-        addLog('Starting debug availability check', { dateStr, servicesStr });
+        addLog('1. Starting Logic Check', { dateStr, servicesStr });
 
-        // 1. Parse Date
+        const services = servicesStr.split(',');
         const date = new Date(dateStr);
-        if (isNaN(date.getTime())) {
-            throw new Error('Invalid Date format');
-        }
-        addLog('Date parsed successfully', date.toISOString());
 
-        try {
-            const dateCheck = date.toISOString().split('T')[0];
-            addLog('Date ISO string check', dateCheck);
-        } catch (e: any) {
-            throw new Error(`ISO String conversion failed: ${e.message}`);
-        }
-
-        // 2. Parse Services
-        const serviceIds = servicesStr.split(',');
-        addLog('Services parsed', serviceIds);
-
-        // 3. Check Database Connection (Photographers)
-        addLog('Fetching photographers...');
-        const photographers = await prisma.photographer.findMany({
-            where: { active: true }
-        });
-        addLog(`Found ${photographers.length} active photographers`, photographers.map(p => p.name));
-
-        if (photographers.length === 0) {
-            return NextResponse.json({ log, error: 'No active photographers found in DB' });
-        }
-
-        // 4. Check Bookings
+        // Check Bookings Data First (Raw)
         const startOfDay = new Date(`${dateStr}T00:00:00.000Z`);
         const endOfDay = new Date(`${dateStr}T23:59:59.999Z`);
 
-        addLog('Fetching bookings...', { start: startOfDay, end: endOfDay });
-
-        const bookings = await prisma.booking.findMany({
+        const rawBookings = await prisma.booking.findMany({
             where: {
-                date: {
-                    gte: startOfDay,
-                    lte: endOfDay,
-                },
+                date: { gte: startOfDay, lte: endOfDay },
                 status: { not: 'CANCELED' }
+            },
+            select: { id: true, time: true, duration: true, photographerId: true }
+        });
+
+        addLog('2. Raw Bookings Found', rawBookings);
+
+        // Validate Times
+        rawBookings.forEach(b => {
+            if (!b.time || typeof b.time !== 'string' || !b.time.includes(':')) {
+                addLog('⚠️ CRITICAL: Invalid Token Found', b);
             }
         });
-        addLog(`Found ${bookings.length} bookings for this day`);
+
+        addLog('3. Calling getAvailability()');
+        const slots = await getAvailability(date, services);
+
+        addLog('4. Success', { slotsCount: slots.length });
 
         return NextResponse.json({
             success: true,
-            log
+            log,
+            slots
         });
 
     } catch (error: any) {
         addLog('CRITICAL ERROR', error.message);
-        console.error('Debug Availability Error:', error);
+        console.error('Debug Logic Error:', error);
         return NextResponse.json({
             success: false,
             error: error.message,
