@@ -12,6 +12,8 @@ export async function GET() {
             (process.env.TADABASE_APP_SECRET.substring(0, 4) + '...')
             : '❌ Missing',
         SOLICITACAO_TABLE_ID: process.env.SOLICITACAO_TABLE_ID ? '✅ Loaded' : '❌ Missing',
+        EMAIL_USER: process.env.EMAIL_USER ? '✅ Loaded' : '❌ Missing',
+        EMAIL_PASS: process.env.EMAIL_PASS ? (process.env.EMAIL_PASS.length > 5 ? '✅ Loaded' : '⚠️ Too Short') : '❌ Missing',
     };
 
     return NextResponse.json(envStatus);
