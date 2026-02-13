@@ -154,19 +154,30 @@ const SERVICE_MAP: Record<string, string> = {
     "Edição": "Edição"
 };
 
+// Helper to get fresh env vars
+const getEnv = () => {
+    let url = (process.env.TADABASE_API_URL || '').trim();
+    if (url.endsWith('/')) url = url.slice(0, -1);
+
+    return {
+        API_URL: url,
+        APP_ID: (process.env.TADABASE_APP_ID || '').trim(),
+        APP_KEY: (process.env.TADABASE_APP_KEY || '').trim(),
+        APP_SECRET: (process.env.TADABASE_APP_SECRET || '').trim(),
+        TABLE_ID: (process.env.SOLICITACAO_TABLE_ID || '').trim(),
+    }
+}
+
 export const tadabase = {
     async findRecordByProtocol(protocol: string) {
-        const APP_ID = process.env.TADABASE_APP_ID;
-        const APP_KEY = process.env.TADABASE_APP_KEY;
-        const APP_SECRET = process.env.TADABASE_APP_SECRET;
-        const TABLE_ID = process.env.SOLICITACAO_TABLE_ID;
+        const { API_URL, APP_ID, APP_KEY, APP_SECRET, TABLE_ID } = getEnv();
 
         if (!APP_ID || !APP_KEY || !APP_SECRET || !TABLE_ID) return null;
 
         try {
             // Try Field 139 (Referencia)
             let filters = `filters[items][0][field_id]=${FIELDS.protocol}&filters[items][0][operator]=is&filters[items][0][val]=${protocol}`;
-            let searchUrl = `${process.env.TADABASE_API_URL}/data-tables/${TABLE_ID}/records?${filters}`;
+            let searchUrl = `${API_URL}/data-tables/${TABLE_ID}/records?${filters}`;
 
             // console.log(`🔎 Searching Field 139: ${searchUrl}`); // Debug
 
@@ -186,7 +197,7 @@ export const tadabase = {
 
             // Fallback: Try Field 490 (Protocolo de Agendamento)
             filters = `filters[items][0][field_id]=${FIELDS.protocolNew}&filters[items][0][operator]=is&filters[items][0][val]=${protocol}`;
-            searchUrl = `${process.env.TADABASE_API_URL}/data-tables/${TABLE_ID}/records?${filters}`;
+            searchUrl = `${API_URL}/data-tables/${TABLE_ID}/records?${filters}`;
 
             // console.log(`🔎 Searching Field 490: ${searchUrl}`); // Debug
 
@@ -246,20 +257,16 @@ export const tadabase = {
     },
 
     async syncBooking(booking: any) {
-        const APP_ID = process.env.TADABASE_APP_ID;
-        const APP_KEY = process.env.TADABASE_APP_KEY;
-        const APP_SECRET = process.env.TADABASE_APP_SECRET;
-        const TABLE_ID = process.env.SOLICITACAO_TABLE_ID;
+        const { API_URL, APP_ID, APP_KEY, APP_SECRET, TABLE_ID } = getEnv();
 
         if (!APP_ID || !APP_KEY || !APP_SECRET || !TABLE_ID) {
-            console.warn('⚠️ Tadabase credentials missing. Skipping sync.');
-            return;
+            console.error('❌ Tadabase credentials missing');
+            return null;
         }
 
         try {
             console.log(`🔄 Syncing booking ${booking.protocol} to Tadabase...`);
 
-            // 1. Search for existing record by Protocol
             const existingRecord = await this.findRecordByProtocol(booking.protocol);
             let existingRecordId = existingRecord ? existingRecord.id : null;
 
@@ -361,7 +368,8 @@ export const tadabase = {
             console.log('📦 Tadabase Payload:', JSON.stringify(payload, null, 2));
 
             // 3. Create or Update
-            let url = `${process.env.TADABASE_API_URL}/data-tables/${TABLE_ID}/records`;
+            // 3. Create or Update
+            let url = `${API_URL}/data-tables/${TABLE_ID}/records`;
 
             if (existingRecordId) {
                 console.log(`📝 Updating record ${existingRecordId}...`);

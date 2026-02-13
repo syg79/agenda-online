@@ -3,27 +3,28 @@ import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
+    const rawUrl = process.env.TADABASE_API_URL || '';
+    const sanitizedUrl = rawUrl.trim().endsWith('/') ? rawUrl.trim().slice(0, -1) : rawUrl.trim();
+
     const envStatus = {
         NODE_ENV: process.env.NODE_ENV,
-        TADABASE_API_URL: process.env.TADABASE_API_URL || '❌ Missing',
-        TADABASE_APP_ID: process.env.TADABASE_APP_ID || '❌ Missing',
-        TADABASE_APP_KEY: process.env.TADABASE_APP_KEY ? '✅ Loaded' : '❌ Missing',
-        TADABASE_APP_SECRET: process.env.TADABASE_APP_SECRET ?
-            (process.env.TADABASE_APP_SECRET.substring(0, 4) + '...')
-            : '❌ Missing',
-        SOLICITACAO_TABLE_ID: process.env.SOLICITACAO_TABLE_ID ? '✅ Loaded' : '❌ Missing',
+        TADABASE_API_URL: `Length: ${rawUrl.length} | Value: ${rawUrl}`,
+        TADABASE_APP_ID: `Length: ${(process.env.TADABASE_APP_ID || '').length} | Value: ${process.env.TADABASE_APP_ID}`,
+        TADABASE_APP_KEY: `Length: ${(process.env.TADABASE_APP_KEY || '').length} | Status: ${process.env.TADABASE_APP_KEY ? '✅ Present' : '❌ Missing'}`,
+        TADABASE_APP_SECRET: `Length: ${(process.env.TADABASE_APP_SECRET || '').length} | Starts with: ${(process.env.TADABASE_APP_SECRET || '').substring(0, 4)}...`,
+        SOLICITACAO_TABLE_ID: `Length: ${(process.env.SOLICITACAO_TABLE_ID || '').length} | Value: ${process.env.SOLICITACAO_TABLE_ID}`,
     };
 
     let connectionTest = "⏳ Not tested";
     try {
-        const url = `${process.env.TADABASE_API_URL}/data-tables/${process.env.SOLICITACAO_TABLE_ID}/records?limit=1`;
+        const url = `${sanitizedUrl}/data-tables/${(process.env.SOLICITACAO_TABLE_ID || '').trim()}/records?limit=1`;
         console.log(`Testing connection to: ${url}`);
 
         const res = await fetch(url, {
             headers: {
-                'X-Tadabase-App-id': process.env.TADABASE_APP_ID!,
-                'X-Tadabase-App-Key': process.env.TADABASE_APP_KEY!,
-                'X-Tadabase-App-Secret': process.env.TADABASE_APP_SECRET!
+                'X-Tadabase-App-id': (process.env.TADABASE_APP_ID || '').trim(),
+                'X-Tadabase-App-Key': (process.env.TADABASE_APP_KEY || '').trim(),
+                'X-Tadabase-App-Secret': (process.env.TADABASE_APP_SECRET || '').trim()
             }
         });
         if (res.ok) {
