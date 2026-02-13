@@ -183,6 +183,7 @@ export const tadabase = {
 
             let searchRes = await fetch(searchUrl, {
                 method: 'GET',
+                cache: 'no-store',
                 headers: {
                     'X-Tadabase-App-id': APP_ID, 'X-Tadabase-App-Key': APP_KEY, 'X-Tadabase-App-Secret': APP_SECRET
                 }
@@ -203,6 +204,7 @@ export const tadabase = {
 
             searchRes = await fetch(searchUrl, {
                 method: 'GET',
+                cache: 'no-store',
                 headers: {
                     'X-Tadabase-App-id': APP_ID, 'X-Tadabase-App-Key': APP_KEY, 'X-Tadabase-App-Secret': APP_SECRET
                 }
