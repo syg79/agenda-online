@@ -10,40 +10,33 @@ export async function GET() {
         NODE_ENV: process.env.NODE_ENV,
         TADABASE_API_URL: `Length: ${rawUrl.length} | Value: ${rawUrl}`,
         TADABASE_APP_ID: `Length: ${(process.env.TADABASE_APP_ID || '').length} | Value: ${process.env.TADABASE_APP_ID}`,
-        TADABASE_APP_KEY: `Length: ${(process.env.TADABASE_APP_KEY || '').length} | Value: ${process.env.TADABASE_APP_KEY}`,
-        TADABASE_APP_SECRET: `Length: ${(process.env.TADABASE_APP_SECRET || '').length} | Value: ${process.env.TADABASE_APP_SECRET}`,
+        TADABASE_APP_KEY: `Length: ${(process.env.TADABASE_APP_KEY || '').length} | Starts with: ${(process.env.TADABASE_APP_KEY || '').substring(0, 4)}...`,
+        TADABASE_APP_SECRET: `Length: ${(process.env.TADABASE_APP_SECRET || '').length} | Starts with: ${(process.env.TADABASE_APP_SECRET || '').substring(0, 4)}...`,
         SOLICITACAO_TABLE_ID: `Length: ${(process.env.SOLICITACAO_TABLE_ID || '').length} | Value: ${process.env.SOLICITACAO_TABLE_ID}`,
     };
 
-    const endpoints = [
-        { name: "ENV: api.tadabase.io", url: `https://api.tadabase.io/api/v1/data-tables/o6WQb5NnBZ/records?limit=1`, appId: process.env.TADABASE_APP_ID, key: process.env.TADABASE_APP_KEY, secret: process.env.TADABASE_APP_SECRET },
-        { name: "HARD: api.tadabase.io", url: `https://api.tadabase.io/api/v1/data-tables/o6WQb5NnBZ/records?limit=1`, appId: "DXQ80qgQYR", key: "GGnMopK42ONX", secret: "vqPOTT37VSLfQkBgZGd0ZVajf7Ry4Vkh" },
-        // { name: "HARD: vitrinedoimovel", url: `https://vitrinedoimovel.tadabase.io/api/v1/data-tables/o6WQb5NnBZ/records?limit=1`, appId: "DXQ80qgQYR", key: "GGnMopK42ONX", secret: "vqPOTT37VSLfQkBgZGd0ZVajf7Ry4Vkh" }
-    ];
+    let connectionTest = "⏳ Not tested";
+    try {
+        const url = `${sanitizedUrl}/data-tables/${(process.env.SOLICITACAO_TABLE_ID || '').trim()}/records?limit=1`;
+        console.log(`Testing connection to: ${url}`);
 
-    const results: any[] = [];
-
-    for (const ep of endpoints) {
-        try {
-            console.log(`Testing ${ep.name}...`);
-            const res = await fetch(ep.url, {
-                headers: {
-                    'X-Tadabase-App-id': (ep.appId || '').trim(),
-                    'X-Tadabase-App-Key': (ep.key || '').trim(),
-                    'X-Tadabase-App-Secret': (ep.secret || '').trim()
-                }
-            });
-
-            if (res.ok) {
-                results.push({ name: ep.name, status: `✅ Success (${res.status})` });
-            } else {
-                const txt = await res.text();
-                results.push({ name: ep.name, status: `❌ Failed (${res.status}): ${txt}` });
+        const res = await fetch(url, {
+            headers: {
+                'X-Tadabase-App-id': (process.env.TADABASE_APP_ID || '').trim(),
+                'X-Tadabase-App-Key': (process.env.TADABASE_APP_KEY || '').trim(),
+                'X-Tadabase-App-Secret': (process.env.TADABASE_APP_SECRET || '').trim()
             }
-        } catch (e: any) {
-            results.push({ name: ep.name, status: `❌ Exception: ${e.message}` });
+        });
+        if (res.ok) {
+            const data = await res.json();
+            connectionTest = `✅ Success (200 OK) - Found ${data.items ? data.items.length : 0} records`;
+        } else {
+            const txt = await res.text();
+            connectionTest = `❌ Failed (${res.status}): ${txt}`;
         }
+    } catch (e: any) {
+        connectionTest = `❌ Exception: ${e.message}`;
     }
 
-    return NextResponse.json({ ...envStatus, results });
+    return NextResponse.json({ ...envStatus, connectionTest });
 }
