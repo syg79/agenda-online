@@ -385,6 +385,7 @@ function BookingForm({ companyName }: BookingFormProps) {
         selectedTime,
         totalDuration: getTotalDuration(),
         totalPrice: getTotalPrice(),
+        sourceProtocol: searchParams.get('protocol'), // Send original protocol if editing
       };
 
       const response = await fetch('/api/bookings', {

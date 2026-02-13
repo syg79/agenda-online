@@ -20,7 +20,8 @@ export async function POST(request: Request) {
       selectedDate,
       selectedTime,
       totalDuration,
-      totalPrice
+      totalPrice,
+      sourceProtocol // New optional field
     } = body;
 
     // 1. Validação básica
@@ -31,32 +32,73 @@ export async function POST(request: Request) {
       );
     }
 
-    // 2. Gerar Protocolo (Ex: AG-20240205-X7Z)
-    const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const randomPart = Math.random().toString(36).substring(2, 5).toUpperCase();
-    const protocol = `AG-${datePart}-${randomPart}`;
+    // 2. Check for existing booking (Update Logic)
+    let protocol = '';
+    let booking;
+    let isUpdate = false;
 
-    // 3. Salvar no Banco de Dados (Supabase)
-    const booking = await prisma.booking.create({
-      data: {
-        protocol,
-        clientName,
-        clientEmail,
-        clientPhone,
-        notes,
-        address,
-        neighborhood,
-        zipCode,
-        complement,
-        services: selectedServices, // Array de strings
-        date: new Date(selectedDate),
-        time: selectedTime,
-        duration: totalDuration,
-        status: 'CONFIRMED',
-        price: totalPrice,
-        paymentStatus: 'PENDING'
+    if (sourceProtocol) {
+      const existing = await prisma.booking.findUnique({
+        where: { protocol: sourceProtocol }
+      });
+
+      if (existing) {
+        console.log(`📝 Updating existing booking: ${sourceProtocol}`);
+        protocol = sourceProtocol;
+        isUpdate = true;
+
+        booking = await prisma.booking.update({
+          where: { id: existing.id },
+          data: {
+            clientName,
+            clientEmail,
+            clientPhone,
+            notes,
+            address,
+            neighborhood,
+            zipCode,
+            complement,
+            services: selectedServices,
+            date: new Date(selectedDate),
+            time: selectedTime,
+            duration: totalDuration,
+            status: 'CONFIRMED',
+            price: totalPrice,
+            // Protocol remains the same
+          }
+        });
       }
-    });
+    }
+
+    // 3. Create New if not updating
+    if (!booking) {
+      const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      const randomPart = Math.random().toString(36).substring(2, 5).toUpperCase();
+      protocol = `AG-${datePart}-${randomPart}`;
+
+      console.log(`✨ Creating new booking: ${protocol}`);
+
+      booking = await prisma.booking.create({
+        data: {
+          protocol,
+          clientName,
+          clientEmail,
+          clientPhone,
+          notes,
+          address,
+          neighborhood,
+          zipCode,
+          complement,
+          services: selectedServices, // Array de strings
+          date: new Date(selectedDate),
+          time: selectedTime,
+          duration: totalDuration,
+          status: 'CONFIRMED',
+          price: totalPrice,
+          paymentStatus: 'PENDING'
+        }
+      });
+    }
 
     // 4. Enviar Email de Confirmação
     const emailHtml = `
