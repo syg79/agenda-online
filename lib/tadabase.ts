@@ -261,7 +261,7 @@ export const tadabase = {
 
         if (!APP_ID || !APP_KEY || !APP_SECRET || !TABLE_ID) {
             console.error('❌ Tadabase credentials missing');
-            return null;
+            return { error: '❌ Missing Credentials in .env' };
         }
 
         try {
@@ -305,10 +305,6 @@ export const tadabase = {
             const rawServices = booking.services || [];
             // Map each service using SERVICE_MAP, fallback to original string if not found
             let services = rawServices.map((s: string) => SERVICE_MAP[s] || s);
-
-            // Special handling for 'drone_photo_video' -> might want to push both 'Drone fotos' and 'Drone video'
-            // But Map is 1:1. If 'drone_photo_video' maps to 'Drone video', and user wanted both, we might miss one. 
-            // For now, let's trust the map.
 
             // Ensure unique values and remove empty strings
             services = Array.from(new Set<string>(services)).filter((s: string) => s && s.trim() !== '');
@@ -368,7 +364,6 @@ export const tadabase = {
             console.log('📦 Tadabase Payload:', JSON.stringify(payload, null, 2));
 
             // 3. Create or Update
-            // 3. Create or Update
             let url = `${API_URL}/data-tables/${TABLE_ID}/records`;
 
             if (existingRecordId) {
@@ -379,7 +374,7 @@ export const tadabase = {
             }
 
             const response = await fetch(url, {
-                method: existingRecordId ? 'PUT' : 'POST',
+                method: 'POST', // Tadabase uses POST for updates (405 on PUT)
                 headers: {
                     'Content-Type': 'application/json',
                     'X-Tadabase-App-id': APP_ID, 'X-Tadabase-App-Key': APP_KEY, 'X-Tadabase-App-Secret': APP_SECRET
@@ -390,7 +385,7 @@ export const tadabase = {
             if (!response.ok) {
                 const errText = await response.text();
                 console.error(`❌ Tadabase Error (${response.status}):`, errText);
-                return null;
+                return { error: `API Error ${response.status}: ${errText}` };
             }
 
             const result = await response.json();
@@ -399,15 +394,12 @@ export const tadabase = {
         } catch (error: any) {
             console.error('❌ Tadabase Sync Exception:', error);
             if (error.response) {
-                console.error('Data:', error.response.data);
-                console.error('Status:', error.response.status);
-                console.error('Headers:', error.response.headers);
+                return { error: `Response Error: ${JSON.stringify(error.response.data)}` };
             } else if (error.request) {
-                console.error('No response received:', error.request);
+                return { error: `Request Error: ${JSON.stringify(error.request)}` };
             } else {
-                console.error('Error message:', error.message);
+                return { error: `Exception: ${error.message}` };
             }
-            return null;
         }
     }
 };
