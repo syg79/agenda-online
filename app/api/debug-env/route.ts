@@ -10,8 +10,8 @@ export async function GET() {
         NODE_ENV: process.env.NODE_ENV,
         TADABASE_API_URL: `Length: ${rawUrl.length} | Value: ${rawUrl}`,
         TADABASE_APP_ID: `Length: ${(process.env.TADABASE_APP_ID || '').length} | Value: ${process.env.TADABASE_APP_ID}`,
-        TADABASE_APP_KEY: `Length: ${(process.env.TADABASE_APP_KEY || '').length} | Status: ${process.env.TADABASE_APP_KEY ? '✅ Present' : '❌ Missing'}`,
-        TADABASE_APP_SECRET: `Length: ${(process.env.TADABASE_APP_SECRET || '').length} | Starts with: ${(process.env.TADABASE_APP_SECRET || '').substring(0, 4)}...`,
+        TADABASE_APP_KEY: `Length: ${(process.env.TADABASE_APP_KEY || '').length} | Value: ${process.env.TADABASE_APP_KEY}`,
+        TADABASE_APP_SECRET: `Length: ${(process.env.TADABASE_APP_SECRET || '').length} | Value: ${process.env.TADABASE_APP_SECRET}`,
         SOLICITACAO_TABLE_ID: `Length: ${(process.env.SOLICITACAO_TABLE_ID || '').length} | Value: ${process.env.SOLICITACAO_TABLE_ID}`,
     };
 

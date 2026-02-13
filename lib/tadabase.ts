@@ -379,7 +379,7 @@ export const tadabase = {
             }
 
             const response = await fetch(url, {
-                method: 'POST',
+                method: existingRecordId ? 'PUT' : 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-Tadabase-App-id': APP_ID, 'X-Tadabase-App-Key': APP_KEY, 'X-Tadabase-App-Secret': APP_SECRET
