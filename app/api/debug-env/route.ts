@@ -15,28 +15,35 @@ export async function GET() {
         SOLICITACAO_TABLE_ID: `Length: ${(process.env.SOLICITACAO_TABLE_ID || '').length} | Value: ${process.env.SOLICITACAO_TABLE_ID}`,
     };
 
-    let connectionTest = "⏳ Not tested";
-    try {
-        const url = `${sanitizedUrl}/data-tables/${(process.env.SOLICITACAO_TABLE_ID || '').trim()}/records?limit=1`;
-        console.log(`Testing connection to: ${url}`);
+    const endpoints = [
+        { name: "ENV: api.tadabase.io", url: `https://api.tadabase.io/api/v1/data-tables/o6WQb5NnBZ/records?limit=1`, appId: process.env.TADABASE_APP_ID, key: process.env.TADABASE_APP_KEY, secret: process.env.TADABASE_APP_SECRET },
+        { name: "HARD: api.tadabase.io", url: `https://api.tadabase.io/api/v1/data-tables/o6WQb5NnBZ/records?limit=1`, appId: "DXQ80qgQYR", key: "GGnMopK42ONX", secret: "vqPOTT37VSLfQkBgZGd0ZVajf7Ry4Vkh" },
+        // { name: "HARD: vitrinedoimovel", url: `https://vitrinedoimovel.tadabase.io/api/v1/data-tables/o6WQb5NnBZ/records?limit=1`, appId: "DXQ80qgQYR", key: "GGnMopK42ONX", secret: "vqPOTT37VSLfQkBgZGd0ZVajf7Ry4Vkh" }
+    ];
 
-        const res = await fetch(url, {
-            headers: {
-                'X-Tadabase-App-id': (process.env.TADABASE_APP_ID || '').trim(),
-                'X-Tadabase-App-Key': (process.env.TADABASE_APP_KEY || '').trim(),
-                'X-Tadabase-App-Secret': (process.env.TADABASE_APP_SECRET || '').trim()
+    const results: any[] = [];
+
+    for (const ep of endpoints) {
+        try {
+            console.log(`Testing ${ep.name}...`);
+            const res = await fetch(ep.url, {
+                headers: {
+                    'X-Tadabase-App-id': (ep.appId || '').trim(),
+                    'X-Tadabase-App-Key': (ep.key || '').trim(),
+                    'X-Tadabase-App-Secret': (ep.secret || '').trim()
+                }
+            });
+
+            if (res.ok) {
+                results.push({ name: ep.name, status: `✅ Success (${res.status})` });
+            } else {
+                const txt = await res.text();
+                results.push({ name: ep.name, status: `❌ Failed (${res.status}): ${txt}` });
             }
-        });
-        if (res.ok) {
-            const data = await res.json();
-            connectionTest = `✅ Success (200 OK) - Found ${data.items ? data.items.length : 0} records`;
-        } else {
-            const txt = await res.text();
-            connectionTest = `❌ Failed (${res.status}): ${txt}`;
+        } catch (e: any) {
+            results.push({ name: ep.name, status: `❌ Exception: ${e.message}` });
         }
-    } catch (e: any) {
-        connectionTest = `❌ Exception: ${e.message}`;
     }
 
-    return NextResponse.json({ ...envStatus, connectionTest });
+    return NextResponse.json({ ...envStatus, results });
 }
