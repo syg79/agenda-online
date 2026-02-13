@@ -12,10 +12,18 @@ export async function GET(request: Request) {
     }
 
     try {
+        console.log(`🔎 Searching Tadabase for protocol: ${protocol}`);
         const bookingData = await tadabase.getFormattedBooking(protocol);
+        console.log('📦 Found booking data:', bookingData);
 
         if (!bookingData) {
-            return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
+            console.log('⚠️ Booking not found for protocol:', protocol);
+            // Return visible JSON for debugging
+            return NextResponse.json({
+                error: 'Booking not found',
+                protocol,
+                message: 'No record matched this protocol in Tadabase.'
+            }, { status: 404 });
         }
 
         return NextResponse.json(bookingData);
