@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { MapPin, Clock, Camera, Video, Plane, Check, ChevronRight, ChevronLeft, AlertCircle, Phone } from 'lucide-react';
+import { MapPin, Clock, Camera, Video, Plane, Check, ChevronRight, ChevronLeft, AlertCircle, Phone, Calendar, Mail } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { formatPhone, isValidEmail } from '@/lib/utils';
 
@@ -237,14 +237,23 @@ function BookingForm({ companyName }: BookingFormProps) {
   };
 
   const toggleService = (serviceId: string) => {
-    const idx = selectedServices.indexOf(serviceId);
-    let newServices;
+    let newServices = [...selectedServices];
 
-    if (idx > -1) {
-      newServices = [...selectedServices];
-      newServices.splice(idx, 1);
+    if (newServices.includes(serviceId)) {
+      // Service is already selected, so remove it
+      newServices = newServices.filter(id => id !== serviceId);
     } else {
-      newServices = [...selectedServices, serviceId];
+      // Service is not selected, so add it
+      newServices.push(serviceId);
+
+      // Mutual Exclusivity Logic for Drone services
+      if (serviceId === 'drone_photo_video') {
+        // If Combo selected, remove standalone Drone Photo and Drone Video
+        newServices = newServices.filter(id => id !== 'drone_photo' && id !== 'drone_video');
+      } else if (serviceId === 'drone_photo' || serviceId === 'drone_video') {
+        // If standalone Drone Photo or Drone Video selected, remove Combo
+        newServices = newServices.filter(id => id !== 'drone_photo_video');
+      }
     }
 
     setSelectedServices(newServices);
@@ -984,21 +993,50 @@ function BookingForm({ companyName }: BookingFormProps) {
           )}
 
           {step === 7 && (
-            <div className="text-center py-10">
-              <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6 animate-in zoom-in duration-300">
+            <div className="text-center space-y-6">
+              <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
                 <Check className="w-10 h-10 text-green-600" />
               </div>
-              <h2 className="text-3xl font-bold text-slate-800 mb-4">Agendamento Confirmado!</h2>
-              <p className="text-slate-600 mb-6 max-w-md mx-auto">
-                Seu agendamento foi realizado com sucesso. Enviamos os detalhes para o seu email.
+              <h2 className="text-2xl font-bold text-slate-800">Agendamento Solicitado!</h2>
+              <p className="text-slate-600 max-w-md mx-auto">
+                Seu protocolo é <span className="font-bold text-slate-800">{protocol}</span>.
+                <br />
+                Enviamos os detalhes para seu email. Nossa equipe confirmará em breve.
               </p>
-              <div className="bg-slate-50 rounded-lg p-6 max-w-sm mx-auto mb-8 border border-slate-200">
-                <p className="text-sm text-slate-500 mb-1">Protocolo</p>
-                <p className="text-2xl font-mono font-bold text-slate-800 tracking-wider select-all">{protocol}</p>
+
+              {/* Action Buttons */}
+              <div className="flex flex-col gap-3 max-w-sm mx-auto mt-6">
+                <a
+                  href={`https://wa.me/?text=Olá, acabei de solicitar um agendamento. Protocolo: ${protocol}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 w-full bg-[#25D366] hover:bg-[#20bd5a] text-white font-medium py-3 px-4 rounded-lg transition"
+                >
+                  <span className="font-bold">WhatsApp</span> (Compartilhar)
+                </a>
+
+                <a
+                  href={`https://calendar.google.com/calendar/render?action=TEMPLATE&text=Sessão de Fotos - ${protocol}&details=Protocolo: ${protocol}%0AEndereço: ${address}&dates=${selectedDate ? selectedDate.toISOString().replace(/-|:|\.\d\d\d/g, "").substring(0, 8) : ''}/${selectedDate ? new Date(selectedDate.getTime() + 60 * 60 * 1000).toISOString().replace(/-|:|\.\d\d\d/g, "").substring(0, 8) : ''}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition"
+                >
+                  <Calendar className="w-5 h-5" /> Adicionar ao Google Agenda
+                </a>
+
+                <a
+                  href={`mailto:?subject=Agendamento ${protocol}&body=Olá, segue o protocolo do meu agendamento: ${protocol}`}
+                  className="flex items-center justify-center gap-2 w-full bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium py-3 px-4 rounded-lg transition"
+                >
+                  <Mail className="w-5 h-5" /> Enviar por Email
+                </a>
               </div>
-              <button onClick={reset} className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-8 rounded-lg transition-colors">
-                Novo Agendamento
-              </button>
+
+              <div className="pt-6">
+                <button onClick={() => window.location.href = '/agendar'} className="text-blue-600 hover:underline font-medium">
+                  Novo Agendamento
+                </button>
+              </div>
             </div>
           )}
 

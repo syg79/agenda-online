@@ -21,6 +21,8 @@ const FIELDS = {
     requestDate: 'field_103', // Data da Solicitação
     time: 'field_406', // Horario da Sessao
     protocolNew: 'field_490', // Protocolo de Agendamento
+    dateTimeFull: 'field_407', // Date/Time completo
+    sessionTimeSort: 'field_183', // Horario da sessao (para ordenacao)
 
     // Defaults from ApolarBot
     situation: 'field_219',    // Situação: "Pre-solicitacao (cliente)"
@@ -428,7 +430,11 @@ export const tadabase = {
                 // Date & Time
                 [FIELDS.date]: booking.date ? new Date(booking.date).toISOString().split('T')[0] : undefined,
                 [FIELDS.requestDate]: new Date().toISOString().split('T')[0],
+                [FIELDS.date]: booking.date ? new Date(booking.date).toISOString().split('T')[0] : undefined,
+                [FIELDS.requestDate]: new Date().toISOString().split('T')[0],
                 [FIELDS.time]: booking.time,
+                [FIELDS.sessionTimeSort]: booking.time, // Same as time for sorting
+                [FIELDS.dateTimeFull]: booking.date && booking.time ? `${new Date(booking.date).toISOString().split('T')[0]} ${booking.time}` : undefined,
 
                 // Status Mapping (Prisma -> Tadabase)
                 // Status Mapping (Prisma -> Tadabase)
