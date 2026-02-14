@@ -366,16 +366,20 @@ export const tadabase = {
             // Helper to process internal service IDs
             const processService = (id: string) => {
                 if (id === 'photo') qtdFotos++;
-                if (id === 'video_landscape') qtdVideos++;
-                if (id === 'video_portrait') qtdVideos++; // User said "marcou video paisagem e retrato, quantidade = 2"
+                if (id === 'video_landscape') qtdVideos++; // Ground Videos
+                if (id === 'video_portrait') qtdVideos++; // Ground Videos 
+
                 if (id === 'drone_photo') qtdDroneFotos++;
-                if (id === 'drone_video') qtdVideos++; // User said "Marcou Drone video... field_188"
-                if (id === 'tour_360') qtdTour++;
+
+                if (id === 'drone_video') {
+                    // qtdDroneVideos++; // TODO: Get field ID for Drone Video. User said "field_188 (ka6jMPMQ75)" but video_landscape is also "field_188 (P74QYvLjBE)".
+                    // These are likely different fields. For now, DO NOT count as Ground Video (field_188).
+                }
 
                 if (id === 'drone_photo_video') {
                     // Combo: Drone Fotos + Drone Video
                     qtdDroneFotos++;
-                    qtdVideos++;
+                    // qtdDroneVideos++; // TODO: Add to Drone Video counter once ID is known.
                 }
             };
 
