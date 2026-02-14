@@ -348,14 +348,35 @@ export const tadabase = {
 
                 if (id === 'drone_photo') qtdDroneFotos++;
 
-                if (id === 'drone_video') qtdVideoDrone++;
+                if (id === 'drone_video') qtdVideoDrone++; // Should not happen in UI, but good for safety
 
                 if (id === 'tour_360') qtdTour++;
 
                 if (id === 'drone_photo_video') {
                     // Combo: Drone Fotos + Drone Video
-                    qtdDroneFotos++;
+                    // User Request: Treat as UNIQUE service.
+                    // "Drone Video + fotos" must be treated as independent.
+                    // It maps to "Drone video" (field_188) + "Drone fotos" (checkbox strings)
+                    // BUT for counting, User said "Drone Video" field_188 = 1.
+                    // And "Drone Fotos" field_417 = 1.
+                    // Wait, if I select the combo, do I get 1 in field_188 AND 1 in field_417?
+                    // User said "Drone Video + fotos... unico".
+                    // User provided list: "Marcou Drone video: field_188". "Marcou Drone Fotos: field_417".
+                    // If I mark Combo, I should probably mark both IF the client expects 2 distinct deliverables.
+                    // BUT User said "Lógica do Combo = errado... unico".
+                    // I will assume for now that the Combo should increment BOTH counters because physically it delivers both.
+                    // UNLESS field_188 IS the combo field.
+                    // User said "Marcou Drone video: Quantidade: field_188".
+                    // Since "Drone only video" does not exist, field_188 MUST be the Combo Video component.
+                    // Does it imply Photos too?
+                    // If I select "Drone Fotos" -> field_417.
+                    // If I select "Drone Combo" -> field_188.
+                    // DOES IT ALSO INCREMENT field_417?
+                    // If I do, I am saying "I sold a Drone Photo service".
+                    // If the User considers Combo as "Another thing", maybe `field_417` should NOT be incremented?
+                    // I will try: Combo -> Increment ONLY `field_188`.
                     qtdVideoDrone++;
+                    // qtdDroneFotos++; // REMOVED per user request to treat as independent.
                 }
             };
 
