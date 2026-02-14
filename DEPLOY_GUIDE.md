@@ -24,7 +24,7 @@ Você PRECISARÁ adicionar as seguintes variáveis na seção "Environment Varia
 
 | Variável | Descrição |
 | :--- | :--- |
-| `DATABASE_URL` | URL de conexão do Supabase (Pooler) |
+| `DATABASE_URL` | URL de conexão do Supabase (Pooler) - **IMPORTANTE:** Adicione `?pgbouncer=true` no final. |
 | `DIRECT_URL` | URL de conexão direta do Supabase |
 | `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` | Sua chave de API do Google Maps |
 ### Variáveis de Ambiente (Environment Variables)
