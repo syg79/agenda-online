@@ -218,6 +218,12 @@ function BookingForm({ companyName }: BookingFormProps) {
         return false;
       }
 
+      if (data.neighborhood !== neighborhood) {
+        // Neighborhood changed, invalidating potential photographer availability
+        setTimeSlots([]);
+        setSelectedTime('');
+        // We don't clear date, but we force re-fetch if they go to that step
+      }
       setNeighborhood(data.neighborhood);
       setZipCode(data.zipCode || '');
       setError('');
@@ -584,8 +590,18 @@ function BookingForm({ companyName }: BookingFormProps) {
                   </>
                 )}
 
-                <button onClick={() => setStep(1)} className="ml-auto text-blue-600 hover:underline text-xs shrink-0">Alterar</button>
+                <button onClick={() => setStep(1)} className="ml-auto text-blue-600 hover:underline text-xs shrink-0 pl-2">Alterar</button>
               </div>
+
+              {/* Mobile: Extra Line for Date/Time if present */}
+              {selectedDate && step > 3 && (
+                <div className="max-w-4xl w-full flex items-center gap-2 mt-1 truncate border-t pt-1 md:border-t-0 md:pt-0 md:mt-0 md:w-auto">
+                  <Clock className="w-4 h-4 text-blue-600 shrink-0 md:hidden" />
+                  <span className="truncate text-xs md:text-sm text-slate-600">
+                    {selectedDate.toLocaleDateString('pt-BR')} {selectedTime ? `às ${selectedTime}` : ''}
+                  </span>
+                </div>
+              )}
             </div>
           )}
         </div>
