@@ -51,6 +51,13 @@ function BookingForm({ companyName }: BookingFormProps) {
   const [complement, setComplement] = useState('');
   const [notes, setNotes] = useState('');
 
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (message: string) => {
+    setToastMessage(message);
+    setTimeout(() => setToastMessage(null), 4000);
+  };
+
   // Sync state with URL params when they change
   useEffect(() => {
     const pProtocol = searchParams.get('protocol');
@@ -249,10 +256,16 @@ function BookingForm({ companyName }: BookingFormProps) {
       // Mutual Exclusivity Logic for Drone services
       if (serviceId === 'drone_photo_video') {
         // If Combo selected, remove standalone Drone Photo and Drone Video
-        newServices = newServices.filter(id => id !== 'drone_photo' && id !== 'drone_video');
+        if (newServices.includes('drone_photo') || newServices.includes('drone_video')) {
+          showToast("O combo 'Drone - Fotos + Vídeo' já inclui fotos e vídeos aéreos. As opções avulsas foram desmarcadas.");
+          newServices = newServices.filter(id => id !== 'drone_photo' && id !== 'drone_video');
+        }
       } else if (serviceId === 'drone_photo' || serviceId === 'drone_video') {
         // If standalone Drone Photo or Drone Video selected, remove Combo
-        newServices = newServices.filter(id => id !== 'drone_photo_video');
+        if (newServices.includes('drone_photo_video')) {
+          showToast("Ao selecionar um serviço de Drone avulso, o combo 'Drone - Fotos + Vídeo' foi desmarcado.");
+          newServices = newServices.filter(id => id !== 'drone_photo_video');
+        }
       }
     }
 
@@ -609,6 +622,14 @@ function BookingForm({ companyName }: BookingFormProps) {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Custom Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-full shadow-lg z-50 animate-in fade-in slide-in-from-bottom-4 duration-300 flex items-center gap-2 text-sm max-w-sm text-center">
+          <AlertCircle className="w-5 h-5 text-yellow-400 shrink-0" />
+          {toastMessage}
         </div>
       )}
 
