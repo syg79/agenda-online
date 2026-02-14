@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { MapPin, Clock, Camera, Video, Plane, Check, ChevronRight, ChevronLeft, AlertCircle, Phone } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
+import { formatPhone, isValidEmail } from '@/lib/utils';
 
 // Definições de tipos
 type Service = {
@@ -81,11 +82,27 @@ function BookingForm({ companyName }: BookingFormProps) {
               setSelectedServices(data.services);
             }
 
-            // If we have Address and Services, jump to Date selection (Step 3)
-            if (data.address && data.services && data.services.length > 0) {
-              setStep(3);
-              // Trigger address validation in background to ensure coords? 
-              // Maybe skip for now, relying on text address.
+            // Pre-fill Date & Time if available
+            if (data.date) {
+              const [y, m, d] = data.date.split('-').map(Number);
+              const pDate = new Date(y, m - 1, d);
+              setSelectedDate(pDate);
+
+              if (data.services && Array.isArray(data.services)) {
+                // Fetch availability immediately with the known services
+                fetchAvailability(pDate, data.services);
+              }
+
+              if (data.time) {
+                setSelectedTime(data.time);
+              }
+            }
+
+            // Navigation Logic based on data completeness
+            if (data.address && data.services && data.services.length > 0 && data.date && data.time) {
+              setStep(5); // Go to Data/Review
+            } else if (data.address && data.services && data.services.length > 0) {
+              setStep(3); // Go to Date
             } else if (data.address) {
               setStep(2); // Go to Services
             }
@@ -241,8 +258,9 @@ function BookingForm({ companyName }: BookingFormProps) {
     return total;
   };
 
-  const fetchAvailability = async (date: Date) => {
-    if (!date || selectedServices.length === 0) return;
+  const fetchAvailability = async (date: Date, servicesOverride?: string[]) => {
+    const servicesToUse = servicesOverride || selectedServices;
+    if (!date || servicesToUse.length === 0) return;
 
     setIsLoadingSlots(true);
     setTimeSlots([]);
@@ -250,7 +268,7 @@ function BookingForm({ companyName }: BookingFormProps) {
 
     // Format date to YYYY-MM-DD
     const dateString = date.toISOString().split('T')[0];
-    const servicesString = selectedServices.join(',');
+    const servicesString = servicesToUse.join(',');
 
     try {
       const response = await fetch(`/api/availability?date=${dateString}&services=${servicesString}`);
@@ -359,6 +377,14 @@ function BookingForm({ companyName }: BookingFormProps) {
     if (step === 5) {
       if (!clientName || !clientEmail || !clientPhone) {
         setError('Preencha todos os campos obrigatórios');
+        return;
+      }
+      if (!isValidEmail(clientEmail)) {
+        setError('Por favor, insira um email válido');
+        return;
+      }
+      if (clientPhone.replace(/\D/g, '').length < 10) {
+        setError('Por favor, insira um telefone válido com DDD');
         return;
       }
     }
@@ -472,19 +498,36 @@ function BookingForm({ companyName }: BookingFormProps) {
                 if (s === 5) label = 'Dados';
                 if (s === 6) label = 'Confirma';
 
+                // Navigation Logic
+                const canNavigate = () => {
+                  if (s === 1) return true;
+                  if (s === 2) return !!address;
+                  if (s === 3) return !!address && selectedServices.length > 0;
+                  if (s === 4) return !!address && selectedServices.length > 0 && !!selectedDate;
+                  if (s === 5) return !!address && selectedServices.length > 0 && !!selectedDate && !!selectedTime;
+                  return false;
+                };
+
+                const isClickable = s < step || canNavigate();
+
                 return (
-                  <div key={s} className="flex flex-col items-center flex-1 z-10">
+                  <button
+                    key={s}
+                    onClick={() => isClickable && setStep(s)}
+                    disabled={!isClickable}
+                    className="flex flex-col items-center flex-1 z-10 focus:outline-none group"
+                  >
                     <div
-                      className={'w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-colors duration-300 ' +
-                        (s < step ? 'bg-green-500 text-white' : s === step ? 'bg-blue-600 text-white ring-4 ring-blue-100' : 'bg-slate-200 text-slate-400')
+                      className={'w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300 ' +
+                        (s < step ? 'bg-green-500 text-white' : s === step ? 'bg-blue-600 text-white ring-4 ring-blue-100' : 'bg-slate-200 text-slate-400 group-hover:bg-slate-300')
                       }
                     >
                       {s < step ? <Check className="w-4 h-4" /> : s}
                     </div>
-                    <span className={`text-[10px] mt-1 font-medium uppercase tracking-wide ${s === step ? 'text-blue-600' : s < step ? 'text-green-600' : 'text-slate-400'}`}>
+                    <span className={`text-[10px] mt-1 font-medium uppercase tracking-wide transition-colors ${s === step ? 'text-blue-600' : s < step ? 'text-green-600' : 'text-slate-400'}`}>
                       {label}
                     </span>
-                  </div>
+                  </button>
                 )
               })}
             </div>
@@ -507,6 +550,18 @@ function BookingForm({ companyName }: BookingFormProps) {
                 <MapPin className="w-4 h-4 text-blue-600 shrink-0" />
                 <span className="font-medium text-slate-800">Local:</span>
                 <span className="truncate">{address} {complement ? `- ${complement}` : ''}</span>
+
+                {selectedDate && step > 3 && (
+                  <>
+                    <span className="text-slate-300 mx-2">|</span>
+                    <Clock className="w-4 h-4 text-blue-600 shrink-0" />
+                    <span className="font-medium text-slate-800 hidden sm:inline">Data:</span>
+                    <span className="truncate whitespace-nowrap">
+                      {selectedDate.toLocaleDateString('pt-BR')} {selectedTime ? `- ${selectedTime}` : ''}
+                    </span>
+                  </>
+                )}
+
                 <button onClick={() => setStep(1)} className="ml-auto text-blue-600 hover:underline text-xs shrink-0">Alterar</button>
               </div>
             </div>
@@ -813,7 +868,14 @@ function BookingForm({ companyName }: BookingFormProps) {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">WhatsApp *</label>
-                  <input type="tel" value={clientPhone} onChange={(e) => setClientPhone(e.target.value)} placeholder="(41) 99999-9999" className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+                  <input
+                    type="tel"
+                    value={clientPhone}
+                    onChange={(e) => setClientPhone(formatPhone(e.target.value))}
+                    placeholder="(41) 99999-9999"
+                    maxLength={15}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">Observações</label>
