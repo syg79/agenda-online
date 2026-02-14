@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { MapPin, Clock, Camera, Video, Plane, Check, ChevronRight, ChevronLeft, AlertCircle, Phone, Calendar, Mail } from 'lucide-react';
+import { MapPin, Clock, Camera, Video, Plane, Check, ChevronRight, ChevronLeft, AlertCircle, Phone, Calendar, Mail, Globe, Aperture } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { formatPhone, isValidEmail } from '@/lib/utils';
 
@@ -28,10 +28,10 @@ function BookingForm({ companyName }: BookingFormProps) {
     { id: 'photo', name: 'Fotos', duration: 40, icon: Camera, description: 'Sessão fotográfica completa', price: 250 },
     { id: 'video_landscape', name: 'Vídeo Paisagem', duration: 50, icon: Video, description: 'Vídeo horizontal (YouTube)', price: 300 },
     { id: 'video_portrait', name: 'Vídeo Retrato', duration: 50, icon: Video, description: 'Vídeo vertical (Reels/Shorts)', price: 300 },
-    { id: 'drone_photo', name: 'Drone - Fotos', duration: 25, icon: Plane, description: 'Imagens aéreas', price: 200 },
+    { id: 'drone_photo', name: 'Drone - Fotos', duration: 25, icon: Aperture, description: 'Imagens aéreas', price: 200 },
 
-    { id: 'drone_photo_video', name: 'Drone - Fotos + Vídeo', duration: 40, icon: Plane, description: 'Imagens e vídeo aéreos', price: 350 },
-    { id: 'tour_360', name: 'Tour 360º', duration: 60, icon: Video, description: 'Imersão virtual completa', price: 400 }
+    { id: 'drone_photo_video', name: 'Drone - Fotos + Vídeo', duration: 40, icon: Aperture, description: 'Imagens e vídeo aéreos', price: 350 },
+    { id: 'tour_360', name: 'Tour 360º', duration: 60, icon: Globe, description: 'Imersão virtual completa', price: 400 }
   ];
 
   const [step, setStep] = useState(1);
@@ -55,7 +55,7 @@ function BookingForm({ companyName }: BookingFormProps) {
 
   const showToast = (message: string) => {
     setToastMessage(message);
-    setTimeout(() => setToastMessage(null), 4000);
+    setTimeout(() => setToastMessage(null), 8000); // 8 seconds
   };
 
   // Sync state with URL params when they change
@@ -257,13 +257,13 @@ function BookingForm({ companyName }: BookingFormProps) {
       if (serviceId === 'drone_photo_video') {
         // If Combo selected, remove standalone Drone Photo and Drone Video
         if (newServices.includes('drone_photo') || newServices.includes('drone_video')) {
-          showToast("O combo 'Drone - Fotos + Vídeo' já inclui fotos e vídeos aéreos. As opções avulsas foram desmarcadas.");
+          showToast("Maravilha! O 'Drone Combo' já inclui todas as fotos e vídeos aéreos. ✨ Ajustamos sua seleção para evitar duplicidade.");
           newServices = newServices.filter(id => id !== 'drone_photo' && id !== 'drone_video');
         }
       } else if (serviceId === 'drone_photo' || serviceId === 'drone_video') {
         // If standalone Drone Photo or Drone Video selected, remove Combo
         if (newServices.includes('drone_photo_video')) {
-          showToast("Ao selecionar um serviço de Drone avulso, o combo 'Drone - Fotos + Vídeo' foi desmarcado.");
+          showToast("Como você escolheu um serviço de Drone específico, desmarcamos o Combo para não gerar cobrança extra! 👍");
           newServices = newServices.filter(id => id !== 'drone_photo_video');
         }
       }
@@ -1025,7 +1025,7 @@ function BookingForm({ companyName }: BookingFormProps) {
                 Enviamos os detalhes para seu email. Nossa equipe confirmará em breve.
               </p>
 
-              {/* Action Buttons */}
+              {/* Action Buttons (Disabled per user request)
               <div className="flex flex-col gap-3 max-w-sm mx-auto mt-6">
                 <a
                   href={`https://wa.me/?text=Olá, acabei de solicitar um agendamento. Protocolo: ${protocol}`}
@@ -1052,6 +1052,7 @@ function BookingForm({ companyName }: BookingFormProps) {
                   <Mail className="w-5 h-5" /> Enviar por Email
                 </a>
               </div>
+              */}
 
               <div className="pt-6">
                 <button onClick={() => window.location.href = '/agendar'} className="text-blue-600 hover:underline font-medium">
@@ -1063,7 +1064,7 @@ function BookingForm({ companyName }: BookingFormProps) {
 
         </div>
       </div>
-    </div>
+    </div >
   );
 }
 
