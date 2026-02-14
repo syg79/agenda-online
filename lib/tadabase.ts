@@ -34,39 +34,15 @@ const FIELDS = {
     photographer: 'q3kjZDEN6V', // Fotografo (Connection)
 };
 
+
+
 // Quantity Fields (User Provided)
 const COUNT_FIELDS = {
     photo: 'field_118',       // Fotos (3GDN1yqNeq)
-    videoLandscape: 'field_188', // Video Paisagem (P74QYvLjBE)
-    videoPortrait: 'field_189', // Video Retrato (Assumed different - check logic) -> User said field_188 for both? 
-    // Actually, User said "Marcou video Paisagem... field_188 (P74QYvLjBE)"
-    // And "Marcou Drone video... field_188 (ka6jMPMQ75)". 
-    // These are likely different internal field names in Tadabase even if column ID is same? 
-    // No, field_ID is the key. 
-    // Let's use the explicit IDs provided if possible, but the library uses `field_X`.
-    // I will assume field_188 is Video Paisagem. 
-    // And field_??? is Drone Video.
-    // User said "Marcou Drone video: Quantidade: field_188 (ka6jMPMQ75)".
-    // This is conflicting. I will assume `field_188` = Video Landscape.
-    // I will add a TODO or explicit log for the Drone Video one.
-    // Actually, `ka6jMPMQ75` corresponds to `field_189` in my previous logs? No, I don't have previous logs for this.
-    // I will use the mapping logic based on Service Name.
-    dronePhoto: 'field_417',    // Drone Fotos (6b1rA1OrKk)
-    tour360: 'field_117',       // Tour 360 (6b1rALdjKk)
-    // For Drone Video, if it really is field_188 (same as Landscape), it might sum up?
-    // User said: "Atualmente quando marca video paisagem e retrato, deixo a quantidade = 2".
-    // This implies they share a field.
-    // So `field_188` might be "Videos (Total)"?
-    // If so, Landscape = 1, Portrait = 1, Drone Video = 1?
-    // User said "Marcou video Paisagem... field_188". "Marcou Drone video... field_188".
-    // "Marcou video Paisagem e retrato... deixo a quantidade = 2".
-    // This strongly suggests `field_188` is a generic "Videos" counter.
-    // `field_118` is "Fotos".
-    // `field_417` is "Drone Fotos".
-    // `field_117` is "Tour 360".
-
-    // I will implement a counter logic that sums these up.
-    videos: 'field_188',
+    videoGround: 'field_187', // Video Paisagem + Retrato (P74QYvLjBE)
+    videoDrone: 'field_188',  // Drone Video (ka6jMPMQ75)
+    dronePhoto: 'field_417',  // Drone Fotos (6b1rA1OrKk)
+    tour360: 'field_117',     // Tour 360 (6b1rALdjKk)
 };
 
 // Mappings
@@ -359,27 +335,27 @@ export const tadabase = {
 
             // 1. Calculate Quantities (Counters)
             let qtdFotos = 0;       // field_118
-            let qtdVideos = 0;      // field_188 (Landscape, Portrait, Drone Video)
+            let qtdVideoGround = 0; // field_187 (Landscape + Portrait)
+            let qtdVideoDrone = 0;  // field_188
             let qtdDroneFotos = 0;  // field_417
             let qtdTour = 0;        // field_117
 
             // Helper to process internal service IDs
             const processService = (id: string) => {
                 if (id === 'photo') qtdFotos++;
-                if (id === 'video_landscape') qtdVideos++; // Ground Videos
-                if (id === 'video_portrait') qtdVideos++; // Ground Videos 
+                if (id === 'video_landscape') qtdVideoGround++;
+                if (id === 'video_portrait') qtdVideoGround++;
 
                 if (id === 'drone_photo') qtdDroneFotos++;
 
-                if (id === 'drone_video') {
-                    // qtdDroneVideos++; // TODO: Get field ID for Drone Video. User said "field_188 (ka6jMPMQ75)" but video_landscape is also "field_188 (P74QYvLjBE)".
-                    // These are likely different fields. For now, DO NOT count as Ground Video (field_188).
-                }
+                if (id === 'drone_video') qtdVideoDrone++;
+
+                if (id === 'tour_360') qtdTour++;
 
                 if (id === 'drone_photo_video') {
                     // Combo: Drone Fotos + Drone Video
                     qtdDroneFotos++;
-                    // qtdDroneVideos++; // TODO: Add to Drone Video counter once ID is known.
+                    qtdVideoDrone++;
                 }
             };
 
@@ -415,7 +391,8 @@ export const tadabase = {
 
                 // Quantities
                 [COUNT_FIELDS.photo]: qtdFotos,         // field_118
-                [COUNT_FIELDS.videos]: qtdVideos,       // field_188
+                [COUNT_FIELDS.videoGround]: qtdVideoGround, // field_187
+                [COUNT_FIELDS.videoDrone]: qtdVideoDrone,   // field_188
                 [COUNT_FIELDS.dronePhoto]: qtdDroneFotos,// field_417
                 [COUNT_FIELDS.tour360]: qtdTour,        // field_117
 
