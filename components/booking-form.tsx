@@ -29,7 +29,9 @@ function BookingForm({ companyName }: BookingFormProps) {
     { id: 'video_landscape', name: 'Vídeo Paisagem', duration: 50, icon: Video, description: 'Vídeo horizontal (YouTube)', price: 300 },
     { id: 'video_portrait', name: 'Vídeo Retrato', duration: 50, icon: Video, description: 'Vídeo vertical (Reels/Shorts)', price: 300 },
     { id: 'drone_photo', name: 'Drone - Fotos', duration: 25, icon: Plane, description: 'Imagens aéreas', price: 200 },
-    { id: 'drone_photo_video', name: 'Drone - Fotos + Vídeo', duration: 40, icon: Plane, description: 'Imagens e vídeo aéreos', price: 350 }
+
+    { id: 'drone_photo_video', name: 'Drone - Fotos + Vídeo', duration: 40, icon: Plane, description: 'Imagens e vídeo aéreos', price: 350 },
+    { id: 'tour_360', name: 'Tour 360º', duration: 60, icon: Video, description: 'Imersão virtual completa', price: 400 }
   ];
 
   const [step, setStep] = useState(1);
@@ -99,12 +101,15 @@ function BookingForm({ companyName }: BookingFormProps) {
             }
 
             // Navigation Logic based on data completeness
-            if (data.address && data.services && data.services.length > 0 && data.date && data.time) {
-              setStep(5); // Go to Data/Review
+            // User requested to start at Step 1 (Address) to review data
+            if (data) {
+              setStep(1);
+            } else if (data.address && data.services && data.services.length > 0 && data.date && data.time) {
+              // setStep(5); // Disabled per user request
             } else if (data.address && data.services && data.services.length > 0) {
-              setStep(3); // Go to Date
+              // setStep(3); // Disabled per user request
             } else if (data.address) {
-              setStep(2); // Go to Services
+              // setStep(2); // Disabled per user request
             }
 
           }
@@ -227,17 +232,24 @@ function BookingForm({ companyName }: BookingFormProps) {
 
   const toggleService = (serviceId: string) => {
     const idx = selectedServices.indexOf(serviceId);
+    let newServices;
+
     if (idx > -1) {
-      const newServices = [...selectedServices];
+      newServices = [...selectedServices];
       newServices.splice(idx, 1);
-      setSelectedServices(newServices);
     } else {
-      setSelectedServices([...selectedServices, serviceId]);
+      newServices = [...selectedServices, serviceId];
     }
-    // Reset date/time selection if services change
-    setSelectedDate(null);
+
+    setSelectedServices(newServices);
+
+    // UX Fix: Do NOT reset date/time when changing services, unless necessary.
+    if (selectedDate) {
+      // Re-fetch availability to update slots based on new duration
+      fetchAvailability(selectedDate, newServices);
+    }
+    // Only clear specific time slot as duration change might invalidate it
     setSelectedTime('');
-    setTimeSlots([]);
   };
 
   const getTotalDuration = () => {
@@ -456,10 +468,20 @@ function BookingForm({ companyName }: BookingFormProps) {
   };
 
   const getServiceNames = () => {
-    return selectedServices.map(id => {
+    // Fixed Order for display
+    const order = ['photo', 'video_landscape', 'video_portrait', 'drone_photo', 'drone_photo_video', 'tour_360'];
+
+    // Sort selected services based on index in 'order' array
+    const sorted = [...selectedServices].sort((a, b) => {
+      const idxA = order.indexOf(a);
+      const idxB = order.indexOf(b);
+      return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
+    });
+
+    return sorted.map(id => {
       const service = services.find(s => s.id === id);
       return service ? service.name : '';
-    }).join(' + ');
+    }).filter(Boolean).join(' + ');
   };
 
   return (
