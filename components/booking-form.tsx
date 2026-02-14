@@ -572,36 +572,32 @@ function BookingForm({ companyName }: BookingFormProps) {
           </div>
 
           {/* Persistent Address Info Bar (Step > 1) */}
+          {/* Persistent Address Info Bar (Step > 1) */}
           {step > 1 && address && (
             <div className="bg-slate-50 border-t px-4 py-2 text-sm text-slate-600 border-b flex justify-center">
-              <div className="max-w-4xl w-full flex items-center gap-2 truncate">
-                <MapPin className="w-4 h-4 text-blue-600 shrink-0" />
-                <span className="font-medium text-slate-800">Local:</span>
-                <span className="truncate">{address} {complement ? `- ${complement}` : ''}</span>
+              <div className="max-w-4xl w-full flex flex-col gap-1">
 
+                {/* Line 1: Address + Change Button */}
+                <div className="flex items-center justify-between w-full">
+                  <div className="flex items-center gap-2 truncate pr-2">
+                    <MapPin className="w-4 h-4 text-blue-600 shrink-0" />
+                    <span className="font-medium text-slate-800 shrink-0">Local:</span>
+                    <span className="truncate">{address} {complement ? `- ${complement}` : ''}</span>
+                  </div>
+                  <button onClick={() => setStep(1)} className="text-blue-600 hover:underline text-xs shrink-0 font-medium whitespace-nowrap">Alterar</button>
+                </div>
+
+                {/* Line 2: Date/Time (If selected) */}
                 {selectedDate && step > 3 && (
-                  <>
-                    <span className="text-slate-300 mx-2">|</span>
+                  <div className="flex items-center gap-2 truncate border-t border-slate-200 pt-1 mt-1">
                     <Clock className="w-4 h-4 text-blue-600 shrink-0" />
-                    <span className="font-medium text-slate-800 hidden sm:inline">Data:</span>
-                    <span className="truncate whitespace-nowrap">
+                    <span className="font-medium text-slate-800 shrink-0">Data:</span>
+                    <span className="truncate">
                       {selectedDate.toLocaleDateString('pt-BR')} {selectedTime ? `- ${selectedTime}` : ''}
                     </span>
-                  </>
+                  </div>
                 )}
-
-                <button onClick={() => setStep(1)} className="ml-auto text-blue-600 hover:underline text-xs shrink-0 pl-2">Alterar</button>
               </div>
-
-              {/* Mobile: Extra Line for Date/Time if present */}
-              {selectedDate && step > 3 && (
-                <div className="max-w-4xl w-full flex items-center gap-2 mt-1 truncate border-t pt-1 md:border-t-0 md:pt-0 md:mt-0 md:w-auto">
-                  <Clock className="w-4 h-4 text-blue-600 shrink-0 md:hidden" />
-                  <span className="truncate text-xs md:text-sm text-slate-600">
-                    {selectedDate.toLocaleDateString('pt-BR')} {selectedTime ? `às ${selectedTime}` : ''}
-                  </span>
-                </div>
-              )}
             </div>
           )}
         </div>

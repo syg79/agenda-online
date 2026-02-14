@@ -30,6 +30,8 @@ const FIELDS = {
     edited: 'field_251',       // Editado: "Nao"
     printed: 'field_306',      // Impresso: "nao"
     publishAgenda: 'field_223',// Publicar agenda: "Privado"
+    cobranca: 'field_184',     // Cobrança: "A faturar"
+
 
     photographer: 'q3kjZDEN6V', // Fotografo (Connection)
 };
@@ -429,7 +431,12 @@ export const tadabase = {
                 [FIELDS.time]: booking.time,
 
                 // Status Mapping (Prisma -> Tadabase)
-                [FIELDS.status]: booking.status === 'CANCELED' ? 'Cancelado' : (booking.photographer ? 'Agendado' : 'Pendente'),
+                // Status Mapping (Prisma -> Tadabase)
+                // User Request: "quando agendado tem que mudar para 'Agendado'"
+                [FIELDS.status]: 'Agendado',
+
+                // Cobrança
+                [FIELDS.cobranca]: 'A faturar',
 
                 // Defaults
                 [FIELDS.situation]: "Pre-solicitacao (cliente)",
