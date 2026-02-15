@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { MapPin, Clock, Camera, Video, Plane, Check, ChevronRight, ChevronLeft, AlertCircle, Phone, Calendar, Mail, Globe, Aperture } from 'lucide-react';
+import { MapPin, Clock, Camera, Video, Plane, Check, ChevronRight, ChevronLeft, AlertCircle, Phone, Calendar, Mail, Globe, Aperture, ShoppingBag } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { formatPhone, isValidEmail } from '@/lib/utils';
 
@@ -633,399 +633,400 @@ function BookingForm({ companyName }: BookingFormProps) {
         </div>
       )}
 
-      <div className="max-w-4xl mx-auto px-4 py-6">
-        <div className="bg-white rounded-lg shadow-lg p-6 md:p-8">
+      <div className="max-w-6xl mx-auto px-4 py-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+          <div className="lg:col-span-2 bg-white rounded-lg shadow-lg p-6 md:p-8">
 
-          {step === 1 && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-2xl font-bold text-slate-800 mb-2">Onde será a sessão?</h2>
-                <p className="text-slate-600">Informe o endereço completo</p>
-              </div>
+            {step === 1 && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-800 mb-2">Onde será a sessão?</h2>
+                  <p className="text-slate-600">Informe o endereço completo</p>
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Endereço Completo *</label>
-                <div className="relative">
-                  <MapPin className="absolute left-3 top-3.5 w-5 h-5 text-slate-400" />
-                  <input
-                    type="text"
-                    value={address}
-                    onChange={(e) => handleAddressInput(e.target.value)}
-                    placeholder="Digite o endereço..."
-                    className={`w-full pl-11 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 transition-colors ${isOutOfCoverage ? 'border-yellow-400 bg-yellow-50/50' : 'border-slate-300'}`}
-                  />
-                  {isSearching && (
-                    <div className="absolute right-3 top-3.5">
-                      <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Endereço Completo *</label>
+                  <div className="relative">
+                    <MapPin className="absolute left-3 top-3.5 w-5 h-5 text-slate-400" />
+                    <input
+                      type="text"
+                      value={address}
+                      onChange={(e) => handleAddressInput(e.target.value)}
+                      placeholder="Digite o endereço..."
+                      className={`w-full pl-11 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 transition-colors ${isOutOfCoverage ? 'border-yellow-400 bg-yellow-50/50' : 'border-slate-300'}`}
+                    />
+                    {isSearching && (
+                      <div className="absolute right-3 top-3.5">
+                        <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                      </div>
+                    )}
+                  </div>
+                  {suggestions.length > 0 && !isSearching && (
+                    <div className="mt-2 border border-slate-200 rounded-lg overflow-hidden shadow-sm">
+                      {suggestions.map((sug, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => selectSuggestion(sug)}
+                          className="w-full text-left px-4 py-3 hover:bg-slate-50 border-b last:border-b-0 text-sm flex items-center"
+                        >
+                          <MapPin className="inline w-4 h-4 mr-2 text-slate-400 shrink-0" />
+                          <span className="truncate">{sug}</span>
+                        </button>
+                      ))}
                     </div>
                   )}
                 </div>
-                {suggestions.length > 0 && !isSearching && (
-                  <div className="mt-2 border border-slate-200 rounded-lg overflow-hidden shadow-sm">
-                    {suggestions.map((sug, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => selectSuggestion(sug)}
-                        className="w-full text-left px-4 py-3 hover:bg-slate-50 border-b last:border-b-0 text-sm flex items-center"
-                      >
-                        <MapPin className="inline w-4 h-4 mr-2 text-slate-400 shrink-0" />
-                        <span className="truncate">{sug}</span>
-                      </button>
-                    ))}
+
+                {/* Coverage Alert - Non-intrusive */}
+                {(isOutOfCoverage || (error && error.toLowerCase().includes('não é atendida'))) && (
+                  <div className="bg-yellow-50 border-l-4 border-yellow-400 p-5 rounded-r-lg animate-in slide-in-from-top-2 duration-300 mt-4">
+                    <div className="flex items-start gap-4">
+                      <div className="bg-yellow-100 p-2 rounded-full shrink-0">
+                        <AlertCircle className="w-6 h-6 text-yellow-600" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-bold text-yellow-900 mb-1 text-base">
+                          {isOutOfCoverage ? 'Endereço fora da área de cobertura' : 'Cidade não atendida via sistema'}
+                        </h3>
+                        <p className="text-sm text-yellow-800 mb-4 leading-relaxed">
+                          {isOutOfCoverage
+                            ? 'A cidade de São Paulo ainda não está disponível pela versão automatizada.'
+                            : error
+                          }
+                          <br />Por favor, entre em contato para verificar a disponibilidade.
+                        </p>
+                        <a
+                          href="https://wa.me/5541999999999"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold py-3 px-5 rounded-lg transition-all hover:shadow-md transform hover:-translate-y-0.5"
+                        >
+                          <Phone className="w-4 h-4" />
+                          <span>Chamar no WhatsApp: (41) 99999-9999</span>
+                        </a>
+                      </div>
+                    </div>
                   </div>
                 )}
-              </div>
 
-              {/* Coverage Alert - Non-intrusive */}
-              {(isOutOfCoverage || (error && error.toLowerCase().includes('não é atendida'))) && (
-                <div className="bg-yellow-50 border-l-4 border-yellow-400 p-5 rounded-r-lg animate-in slide-in-from-top-2 duration-300 mt-4">
-                  <div className="flex items-start gap-4">
-                    <div className="bg-yellow-100 p-2 rounded-full shrink-0">
-                      <AlertCircle className="w-6 h-6 text-yellow-600" />
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="font-bold text-yellow-900 mb-1 text-base">
-                        {isOutOfCoverage ? 'Endereço fora da área de cobertura' : 'Cidade não atendida via sistema'}
-                      </h3>
-                      <p className="text-sm text-yellow-800 mb-4 leading-relaxed">
-                        {isOutOfCoverage
-                          ? 'A cidade de São Paulo ainda não está disponível pela versão automatizada.'
-                          : error
-                        }
-                        <br />Por favor, entre em contato para verificar a disponibilidade.
-                      </p>
-                      <a
-                        href="https://wa.me/5541999999999"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold py-3 px-5 rounded-lg transition-all hover:shadow-md transform hover:-translate-y-0.5"
-                      >
-                        <Phone className="w-4 h-4" />
-                        <span>Chamar no WhatsApp: (41) 99999-9999</span>
-                      </a>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Complemento</label>
-                <input
-                  type="text"
-                  value={complement}
-                  onChange={(e) => setComplement(e.target.value)}
-                  placeholder="Apto 101, Bloco B..."
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              {/* General Errors (Network, Validation, Empty fields) */}
-              {error && !error.toLowerCase().includes('não é atendida') && (
-                <div className="flex items-start gap-2 p-4 bg-red-50 border border-red-200 rounded-lg">
-                  <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
-                  <p className="text-sm text-red-800">{error}</p>
-                </div>
-              )}
-
-              <button onClick={goNext} disabled={isValidating || isOutOfCoverage} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg flex items-center justify-center gap-2 disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed transition-colors">
-                {isValidating ? 'Validando endereço...' : 'Continuar'} <ChevronRight className="w-5 h-5" />
-              </button>
-            </div>
-          )}
-
-          {step === 2 && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-2xl font-bold text-slate-800 mb-2">Quais serviços?</h2>
-                <p className="text-slate-600">Selecione um ou mais</p>
-              </div>
-              <div className="space-y-3">
-                {services.map((service) => {
-                  const Icon = service.icon;
-                  const isSelected = selectedServices.includes(service.id);
-                  return (
-                    <button
-                      key={service.id}
-                      onClick={() => toggleService(service.id)}
-                      className={'w-full p-4 border-2 rounded-lg text-left transition ' + (isSelected ? 'border-blue-600 bg-blue-50' : 'border-slate-200 hover:border-blue-300')}
-                    >
-                      <div className="flex items-start gap-4">
-                        <div className={'p-3 rounded-lg ' + (isSelected ? 'bg-blue-600' : 'bg-slate-100')}>
-                          <Icon className={'w-6 h-6 ' + (isSelected ? 'text-white' : 'text-slate-600')} />
-                        </div>
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-slate-800 mb-1">{service.name}</h3>
-                          <p className="text-sm text-slate-600 mb-2">{service.description}</p>
-                          <span className="text-xs text-slate-500 flex items-center gap-1">
-                            <Clock className="w-3.5 h-3.5" />{service.duration} min
-                          </span>
-                          {showPrices && (
-                            <div className="text-sm font-semibold text-blue-600 mt-1">R$ {service.price},00</div>
-                          )}
-                        </div>
-                        <div className={'w-6 h-6 rounded border-2 flex items-center justify-center ' + (isSelected ? 'bg-blue-600 border-blue-600' : 'border-slate-300')}>
-                          {isSelected && <Check className="w-4 h-4 text-white" />}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-              {selectedServices.length > 0 && (
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                  <h3 className="font-medium text-green-900 mb-2">Resumo</h3>
-                  <p className="text-sm text-green-800">Serviços: {getServiceNames()}</p>
-                  <p className="text-sm text-green-800">Duração: {getTotalDuration()} min</p>
-                  {showPrices && (
-                    <p className="text-lg font-bold text-green-900 mt-2">Total: R$ {getTotalPrice()},00</p>
-                  )}
-                </div>
-              )}
-              {error && (
-                <div className="flex items-start gap-2 p-4 bg-red-50 border border-red-200 rounded-lg">
-                  <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
-                  <p className="text-sm text-red-800">{error}</p>
-                </div>
-              )}
-              <div className="flex gap-3">
-                <button onClick={() => setStep(1)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-3 px-6 rounded-lg flex items-center justify-center gap-2">
-                  <ChevronLeft className="w-5 h-5" />Voltar
-                </button>
-                <button onClick={goNext} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg flex items-center justify-center gap-2">
-                  Continuar <ChevronRight className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {step === 3 && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-2xl font-bold text-slate-800 mb-2">Qual o melhor dia?</h2>
-                <p className="text-slate-600">Selecione a data</p>
-              </div>
-
-              <div className="space-y-6">
-                {generateCalendar().map((week, weekIdx) => (
-                  <div key={weekIdx}>
-                    {weekIdx === 0 && (
-                      <div className="mb-3">
-                        <h3 className="text-sm font-semibold text-slate-700 uppercase">{week.monthName}</h3>
-                      </div>
-                    )}
-                    {weekIdx > 0 && week.monthName !== generateCalendar()[weekIdx - 1].monthName && (
-                      <div className="pt-4 pb-3 border-t-2 border-slate-200 mt-6">
-                        <h3 className="text-sm font-semibold text-slate-700 uppercase">{week.monthName}</h3>
-                      </div>
-                    )}
-                    <div className="grid grid-cols-7 gap-2">
-                      {weekIdx === 0 && (
-                        <React.Fragment>
-                          <div className="text-center text-xs font-medium text-slate-500 pb-2">Dom</div>
-                          <div className="text-center text-xs font-medium text-slate-500 pb-2">Seg</div>
-                          <div className="text-center text-xs font-medium text-slate-500 pb-2">Ter</div>
-                          <div className="text-center text-xs font-medium text-slate-500 pb-2">Qua</div>
-                          <div className="text-center text-xs font-medium text-slate-500 pb-2">Qui</div>
-                          <div className="text-center text-xs font-medium text-slate-500 pb-2">Sex</div>
-                          <div className="text-center text-xs font-medium text-slate-500 pb-2">Sáb</div>
-                        </React.Fragment>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-7 gap-2">
-                      {week.days.map((item: any, dayIdx: number) => {
-                        if (item.type === 'empty') {
-                          return <div key={'empty' + dayIdx} className="p-3"></div>;
-                        }
-                        const day = item;
-                        const isSelected = selectedDate && selectedDate.getDate() === day.day && selectedDate.getMonth() === day.month;
-                        return (
-                          <button
-                            key={'day' + weekIdx + dayIdx}
-                            onClick={() => day.available && handleDateSelect(day.date)}
-                            disabled={!day.available}
-                            className={'p-3 rounded-lg border-2 transition text-center ' + (isSelected ? 'border-blue-600 bg-blue-50' : day.available ? 'border-slate-200 hover:border-blue-300' : 'border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed')}
-                          >
-                            <div className="text-xs text-slate-500 mb-1">{day.weekday}</div>
-                            <div className={'text-lg font-semibold ' + (isSelected ? 'text-blue-600' : day.available ? 'text-slate-800' : 'text-slate-400')}>{day.day}</div>
-                            {day.isSunday && <div className="text-xs text-red-500 mt-1">-</div>}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {error && (
-                <div className="flex items-start gap-2 p-4 bg-red-50 border border-red-200 rounded-lg">
-                  <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
-                  <p className="text-sm text-red-800">{error}</p>
-                </div>
-              )}
-              <div className="flex gap-3">
-                <button onClick={() => setStep(2)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-3 px-6 rounded-lg flex items-center justify-center gap-2">
-                  <ChevronLeft className="w-5 h-5" />Voltar
-                </button>
-                <button onClick={goNext} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg flex items-center justify-center gap-2">
-                  Continuar <ChevronRight className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {step === 4 && selectedDate && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-2xl font-bold text-slate-800 mb-2">Qual horário?</h2>
-                <p className="text-slate-600">Horários para {selectedDate.toLocaleDateString('pt-BR')}</p>
-                <p className="text-sm text-slate-500">Duração: {getTotalDuration()} min</p>
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {isLoadingSlots && <p className="text-slate-500 col-span-full">Buscando horários...</p>}
-                {!isLoadingSlots && timeSlots.map((slot) => (
-                  <button
-                    key={slot.time}
-                    onClick={() => setSelectedTime(slot.time)}
-                    className={'p-4 border-2 rounded-lg transition ' + (selectedTime === slot.time ? 'border-blue-600 bg-blue-50' : 'border-slate-200 hover:border-blue-300')}
-                  >
-                    <div className={'text-lg font-semibold mb-1 ' + (selectedTime === slot.time ? 'text-blue-600' : 'text-slate-800')}>
-                      {slot.time}
-                    </div>
-                    <div className="text-xs text-slate-500">{slot.available} fotógrafo(s)</div>
-                  </button>
-                ))}
-              </div>
-              {!isLoadingSlots && timeSlots.length === 0 && !error && (
-                <p className="text-slate-500 col-span-full text-center py-4">Nenhum horário encontrado para este dia. Tente outra data.</p>
-              )}
-              {error && (
-                <div className="flex items-start gap-2 p-4 bg-red-50 border border-red-200 rounded-lg">
-                  <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
-                  <p className="text-sm text-red-800">{error}</p>
-                </div>
-              )}
-              <div className="flex gap-3">
-                <button onClick={() => setStep(3)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-3 px-6 rounded-lg flex items-center justify-center gap-2">
-                  <ChevronLeft className="w-5 h-5" />Voltar
-                </button>
-                <button onClick={goNext} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg flex items-center justify-center gap-2">
-                  Continuar <ChevronRight className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {step === 5 && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-2xl font-bold text-slate-800 mb-2">Seus dados</h2>
-                <p className="text-slate-600">Para confirmação</p>
-              </div>
-              <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Nome *</label>
-                  <input type="text" value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Seu nome" className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Email *</label>
-                  <input type="email" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} placeholder="seu@email.com" className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">WhatsApp *</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Complemento</label>
                   <input
-                    type="tel"
-                    value={clientPhone}
-                    onChange={(e) => setClientPhone(formatPhone(e.target.value))}
-                    placeholder="(41) 99999-9999"
-                    maxLength={15}
+                    type="text"
+                    value={complement}
+                    onChange={(e) => setComplement(e.target.value)}
+                    placeholder="Apto 101, Bloco B..."
                     className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
+
+                {/* General Errors (Network, Validation, Empty fields) */}
+                {error && !error.toLowerCase().includes('não é atendida') && (
+                  <div className="flex items-start gap-2 p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
+                    <p className="text-sm text-red-800">{error}</p>
+                  </div>
+                )}
+
+                <button onClick={goNext} disabled={isValidating || isOutOfCoverage} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg flex items-center justify-center gap-2 disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed transition-colors">
+                  {isValidating ? 'Validando endereço...' : 'Continuar'} <ChevronRight className="w-5 h-5" />
+                </button>
+              </div>
+            )}
+
+            {step === 2 && (
+              <div className="space-y-6">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Observações</label>
-                  <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Informações adicionais..." rows={3} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+                  <h2 className="text-2xl font-bold text-slate-800 mb-2">Quais serviços?</h2>
+                  <p className="text-slate-600">Selecione um ou mais</p>
+                </div>
+                <div className="space-y-3">
+                  {services.map((service) => {
+                    const Icon = service.icon;
+                    const isSelected = selectedServices.includes(service.id);
+                    return (
+                      <button
+                        key={service.id}
+                        onClick={() => toggleService(service.id)}
+                        className={'w-full p-4 border-2 rounded-lg text-left transition ' + (isSelected ? 'border-blue-600 bg-blue-50' : 'border-slate-200 hover:border-blue-300')}
+                      >
+                        <div className="flex items-start gap-4">
+                          <div className={'p-3 rounded-lg ' + (isSelected ? 'bg-blue-600' : 'bg-slate-100')}>
+                            <Icon className={'w-6 h-6 ' + (isSelected ? 'text-white' : 'text-slate-600')} />
+                          </div>
+                          <div className="flex-1">
+                            <h3 className="font-semibold text-slate-800 mb-1">{service.name}</h3>
+                            <p className="text-sm text-slate-600 mb-2">{service.description}</p>
+                            <span className="text-xs text-slate-500 flex items-center gap-1">
+                              <Clock className="w-3.5 h-3.5" />{service.duration} min
+                            </span>
+                            {showPrices && (
+                              <div className="text-sm font-semibold text-blue-600 mt-1">R$ {service.price},00</div>
+                            )}
+                          </div>
+                          <div className={'w-6 h-6 rounded border-2 flex items-center justify-center ' + (isSelected ? 'bg-blue-600 border-blue-600' : 'border-slate-300')}>
+                            {isSelected && <Check className="w-4 h-4 text-white" />}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                {selectedServices.length > 0 && (
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <h3 className="font-medium text-green-900 mb-2">Resumo</h3>
+                    <p className="text-sm text-green-800">Serviços: {getServiceNames()}</p>
+                    <p className="text-sm text-green-800">Duração: {getTotalDuration()} min</p>
+                    {showPrices && (
+                      <p className="text-lg font-bold text-green-900 mt-2">Total: R$ {getTotalPrice()},00</p>
+                    )}
+                  </div>
+                )}
+                {error && (
+                  <div className="flex items-start gap-2 p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
+                    <p className="text-sm text-red-800">{error}</p>
+                  </div>
+                )}
+                <div className="flex gap-3">
+                  <button onClick={() => setStep(1)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-3 px-6 rounded-lg flex items-center justify-center gap-2">
+                    <ChevronLeft className="w-5 h-5" />Voltar
+                  </button>
+                  <button onClick={goNext} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg flex items-center justify-center gap-2">
+                    Continuar <ChevronRight className="w-5 h-5" />
+                  </button>
                 </div>
               </div>
-              {error && (
-                <div className="flex items-start gap-2 p-4 bg-red-50 border border-red-200 rounded-lg">
-                  <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
-                  <p className="text-sm text-red-800">{error}</p>
-                </div>
-              )}
-              <div className="flex gap-3">
-                <button onClick={() => setStep(4)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-3 px-6 rounded-lg flex items-center justify-center gap-2">
-                  <ChevronLeft className="w-5 h-5" />Voltar
-                </button>
-                <button onClick={goNext} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg flex items-center justify-center gap-2">
-                  Revisar <ChevronRight className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-          )}
+            )}
 
-          {step === 6 && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-2xl font-bold text-slate-800 mb-2">Confirme</h2>
-                <p className="text-slate-600">Revise os detalhes</p>
-              </div>
-              <div className="space-y-4">
-                <div className="bg-slate-50 rounded-lg p-4">
-                  <h3 className="font-semibold text-slate-700 mb-2">Local</h3>
-                  <p className="text-slate-600">{address}</p>
-                  {complement && <p className="text-sm text-slate-500">Complemento: {complement}</p>}
-                  <p className="text-sm text-slate-500">Bairro: {neighborhood}</p>
+            {step === 3 && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-800 mb-2">Qual o melhor dia?</h2>
+                  <p className="text-slate-600">Selecione a data</p>
                 </div>
-                <div className="bg-slate-50 rounded-lg p-4">
-                  <h3 className="font-semibold text-slate-700 mb-2">Serviços</h3>
-                  <p className="text-slate-600">{getServiceNames()}</p>
+
+                <div className="space-y-6">
+                  {generateCalendar().map((week, weekIdx) => (
+                    <div key={weekIdx}>
+                      {weekIdx === 0 && (
+                        <div className="mb-3">
+                          <h3 className="text-sm font-semibold text-slate-700 uppercase">{week.monthName}</h3>
+                        </div>
+                      )}
+                      {weekIdx > 0 && week.monthName !== generateCalendar()[weekIdx - 1].monthName && (
+                        <div className="pt-4 pb-3 border-t-2 border-slate-200 mt-6">
+                          <h3 className="text-sm font-semibold text-slate-700 uppercase">{week.monthName}</h3>
+                        </div>
+                      )}
+                      <div className="grid grid-cols-7 gap-2">
+                        {weekIdx === 0 && (
+                          <React.Fragment>
+                            <div className="text-center text-xs font-medium text-slate-500 pb-2">Dom</div>
+                            <div className="text-center text-xs font-medium text-slate-500 pb-2">Seg</div>
+                            <div className="text-center text-xs font-medium text-slate-500 pb-2">Ter</div>
+                            <div className="text-center text-xs font-medium text-slate-500 pb-2">Qua</div>
+                            <div className="text-center text-xs font-medium text-slate-500 pb-2">Qui</div>
+                            <div className="text-center text-xs font-medium text-slate-500 pb-2">Sex</div>
+                            <div className="text-center text-xs font-medium text-slate-500 pb-2">Sáb</div>
+                          </React.Fragment>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-7 gap-2">
+                        {week.days.map((item: any, dayIdx: number) => {
+                          if (item.type === 'empty') {
+                            return <div key={'empty' + dayIdx} className="p-3"></div>;
+                          }
+                          const day = item;
+                          const isSelected = selectedDate && selectedDate.getDate() === day.day && selectedDate.getMonth() === day.month;
+                          return (
+                            <button
+                              key={'day' + weekIdx + dayIdx}
+                              onClick={() => day.available && handleDateSelect(day.date)}
+                              disabled={!day.available}
+                              className={'p-3 rounded-lg border-2 transition text-center ' + (isSelected ? 'border-blue-600 bg-blue-50' : day.available ? 'border-slate-200 hover:border-blue-300' : 'border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed')}
+                            >
+                              <div className="text-xs text-slate-500 mb-1">{day.weekday}</div>
+                              <div className={'text-lg font-semibold ' + (isSelected ? 'text-blue-600' : day.available ? 'text-slate-800' : 'text-slate-400')}>{day.day}</div>
+                              {day.isSunday && <div className="text-xs text-red-500 mt-1">-</div>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {error && (
+                  <div className="flex items-start gap-2 p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
+                    <p className="text-sm text-red-800">{error}</p>
+                  </div>
+                )}
+                <div className="flex gap-3">
+                  <button onClick={() => setStep(2)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-3 px-6 rounded-lg flex items-center justify-center gap-2">
+                    <ChevronLeft className="w-5 h-5" />Voltar
+                  </button>
+                  <button onClick={goNext} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg flex items-center justify-center gap-2">
+                    Continuar <ChevronRight className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {step === 4 && selectedDate && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-800 mb-2">Qual horário?</h2>
+                  <p className="text-slate-600">Horários para {selectedDate.toLocaleDateString('pt-BR')}</p>
                   <p className="text-sm text-slate-500">Duração: {getTotalDuration()} min</p>
-                  {showPrices && (
-                    <p className="text-sm font-semibold text-slate-700 mt-1">Valor Total: R$ {getTotalPrice()},00</p>
-                  )}
                 </div>
-                <div className="bg-slate-50 rounded-lg p-4">
-                  <h3 className="font-semibold text-slate-700 mb-2">Data e Horário</h3>
-                  <p className="text-slate-600">{selectedDate?.toLocaleDateString('pt-BR')} às {selectedTime}</p>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  {isLoadingSlots && <p className="text-slate-500 col-span-full">Buscando horários...</p>}
+                  {!isLoadingSlots && timeSlots.map((slot) => (
+                    <button
+                      key={slot.time}
+                      onClick={() => setSelectedTime(slot.time)}
+                      className={'p-4 border-2 rounded-lg transition ' + (selectedTime === slot.time ? 'border-blue-600 bg-blue-50' : 'border-slate-200 hover:border-blue-300')}
+                    >
+                      <div className={'text-lg font-semibold mb-1 ' + (selectedTime === slot.time ? 'text-blue-600' : 'text-slate-800')}>
+                        {slot.time}
+                      </div>
+                      <div className="text-xs text-slate-500">{slot.available} fotógrafo(s)</div>
+                    </button>
+                  ))}
                 </div>
-                <div className="bg-slate-50 rounded-lg p-4">
-                  <h3 className="font-semibold text-slate-700 mb-2">Seus Dados</h3>
-                  <p className="text-slate-600">{clientName}</p>
-                  <p className="text-sm text-slate-500">{clientEmail}</p>
-                  <p className="text-sm text-slate-500">{clientPhone}</p>
-                  {notes && <p className="text-sm text-slate-500 mt-1">Obs: {notes}</p>}
+                {!isLoadingSlots && timeSlots.length === 0 && !error && (
+                  <p className="text-slate-500 col-span-full text-center py-4">Nenhum horário encontrado para este dia. Tente outra data.</p>
+                )}
+                {error && (
+                  <div className="flex items-start gap-2 p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
+                    <p className="text-sm text-red-800">{error}</p>
+                  </div>
+                )}
+                <div className="flex gap-3">
+                  <button onClick={() => setStep(3)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-3 px-6 rounded-lg flex items-center justify-center gap-2">
+                    <ChevronLeft className="w-5 h-5" />Voltar
+                  </button>
+                  <button onClick={goNext} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg flex items-center justify-center gap-2">
+                    Continuar <ChevronRight className="w-5 h-5" />
+                  </button>
                 </div>
               </div>
-              {error && (
-                <div className="flex items-start gap-2 p-4 bg-red-50 border border-red-200 rounded-lg">
-                  <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
-                  <p className="text-sm text-red-800">{error}</p>
-                </div>
-              )}
-              <div className="flex gap-3">
-                <button onClick={() => setStep(5)} disabled={isConfirming} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-3 px-6 rounded-lg flex items-center justify-center gap-2">
-                  <ChevronLeft className="w-5 h-5" />Voltar
-                </button>
-                <button onClick={confirm} disabled={isConfirming} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg flex items-center justify-center gap-2 disabled:bg-blue-400">
-                  {isConfirming ? 'Confirmando...' : 'Confirmar Agendamento'} <Check className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-          )}
+            )}
 
-          {step === 7 && (
-            <div className="text-center space-y-6">
-              <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                <Check className="w-10 h-10 text-green-600" />
+            {step === 5 && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-800 mb-2">Seus dados</h2>
+                  <p className="text-slate-600">Para confirmação</p>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Nome *</label>
+                    <input type="text" value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Seu nome" className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Email *</label>
+                    <input type="email" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} placeholder="seu@email.com" className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">WhatsApp *</label>
+                    <input
+                      type="tel"
+                      value={clientPhone}
+                      onChange={(e) => setClientPhone(formatPhone(e.target.value))}
+                      placeholder="(41) 99999-9999"
+                      maxLength={15}
+                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Observações</label>
+                    <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Informações adicionais..." rows={3} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                </div>
+                {error && (
+                  <div className="flex items-start gap-2 p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
+                    <p className="text-sm text-red-800">{error}</p>
+                  </div>
+                )}
+                <div className="flex gap-3">
+                  <button onClick={() => setStep(4)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-3 px-6 rounded-lg flex items-center justify-center gap-2">
+                    <ChevronLeft className="w-5 h-5" />Voltar
+                  </button>
+                  <button onClick={goNext} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg flex items-center justify-center gap-2">
+                    Revisar <ChevronRight className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
-              <h2 className="text-2xl font-bold text-slate-800">Agendamento Solicitado!</h2>
-              <p className="text-slate-600 max-w-md mx-auto">
-                Seu protocolo é <span className="font-bold text-slate-800">{protocol}</span>.
-                <br />
-                Enviamos os detalhes para seu email. Nossa equipe confirmará em breve.
-              </p>
+            )}
 
-              {/* Action Buttons (Disabled per user request)
+            {step === 6 && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-800 mb-2">Confirme</h2>
+                  <p className="text-slate-600">Revise os detalhes</p>
+                </div>
+                <div className="space-y-4">
+                  <div className="bg-slate-50 rounded-lg p-4">
+                    <h3 className="font-semibold text-slate-700 mb-2">Local</h3>
+                    <p className="text-slate-600">{address}</p>
+                    {complement && <p className="text-sm text-slate-500">Complemento: {complement}</p>}
+                    <p className="text-sm text-slate-500">Bairro: {neighborhood}</p>
+                  </div>
+                  <div className="bg-slate-50 rounded-lg p-4">
+                    <h3 className="font-semibold text-slate-700 mb-2">Serviços</h3>
+                    <p className="text-slate-600">{getServiceNames()}</p>
+                    <p className="text-sm text-slate-500">Duração: {getTotalDuration()} min</p>
+                    {showPrices && (
+                      <p className="text-sm font-semibold text-slate-700 mt-1">Valor Total: R$ {getTotalPrice()},00</p>
+                    )}
+                  </div>
+                  <div className="bg-slate-50 rounded-lg p-4">
+                    <h3 className="font-semibold text-slate-700 mb-2">Data e Horário</h3>
+                    <p className="text-slate-600">{selectedDate?.toLocaleDateString('pt-BR')} às {selectedTime}</p>
+                  </div>
+                  <div className="bg-slate-50 rounded-lg p-4">
+                    <h3 className="font-semibold text-slate-700 mb-2">Seus Dados</h3>
+                    <p className="text-slate-600">{clientName}</p>
+                    <p className="text-sm text-slate-500">{clientEmail}</p>
+                    <p className="text-sm text-slate-500">{clientPhone}</p>
+                    {notes && <p className="text-sm text-slate-500 mt-1">Obs: {notes}</p>}
+                  </div>
+                </div>
+                {error && (
+                  <div className="flex items-start gap-2 p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
+                    <p className="text-sm text-red-800">{error}</p>
+                  </div>
+                )}
+                <div className="flex gap-3">
+                  <button onClick={() => setStep(5)} disabled={isConfirming} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-3 px-6 rounded-lg flex items-center justify-center gap-2">
+                    <ChevronLeft className="w-5 h-5" />Voltar
+                  </button>
+                  <button onClick={confirm} disabled={isConfirming} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg flex items-center justify-center gap-2 disabled:bg-blue-400">
+                    {isConfirming ? 'Confirmando...' : 'Confirmar Agendamento'} <Check className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {step === 7 && (
+              <div className="text-center space-y-6">
+                <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <Check className="w-10 h-10 text-green-600" />
+                </div>
+                <h2 className="text-2xl font-bold text-slate-800">Agendamento Solicitado!</h2>
+                <p className="text-slate-600 max-w-md mx-auto">
+                  Seu protocolo é <span className="font-bold text-slate-800">{protocol}</span>.
+                  <br />
+                  Enviamos os detalhes para seu email. Nossa equipe confirmará em breve.
+                </p>
+
+                {/* Action Buttons (Disabled per user request)
               <div className="flex flex-col gap-3 max-w-sm mx-auto mt-6">
                 <a
                   href={`https://wa.me/?text=Olá, acabei de solicitar um agendamento. Protocolo: ${protocol}`}
@@ -1054,17 +1055,106 @@ function BookingForm({ companyName }: BookingFormProps) {
               </div>
               */}
 
-              <div className="pt-6">
-                <button onClick={() => window.location.href = '/agendar'} className="text-blue-600 hover:underline font-medium">
-                  Novo Agendamento
-                </button>
+                <div className="pt-6">
+                  <button onClick={() => window.location.href = '/agendar'} className="text-blue-600 hover:underline font-medium">
+                    Novo Agendamento
+                  </button>
+                </div>
+              </div>
+            )}
+
+          </div>
+        </div>
+
+        {/* Sidebar Summary (Desktop Only) */}
+        <div className="hidden lg:block lg:col-span-1 sticky top-4">
+          <div className="bg-white rounded-xl shadow-lg border border-slate-100 overflow-hidden">
+            <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex items-center gap-2">
+              <ShoppingBag className="w-5 h-5 text-blue-600" />
+              <h3 className="font-bold text-slate-800">Resumo do Pedido</h3>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Local */}
+              <div>
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Localização</p>
+                {address ? (
+                  <div className="flex items-start gap-3">
+                    <MapPin className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-slate-800 leading-tight">{address}</p>
+                      {neighborhood && <p className="text-xs text-slate-500 mt-0.5">{neighborhood}</p>}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-400 italic flex items-center gap-2"><MapPin className="w-4 h-4" /> A definir...</p>
+                )}
+              </div>
+
+              {/* Serviços */}
+              <div className="border-t border-slate-100 pt-5">
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Serviços</p>
+                {selectedServices.length > 0 ? (
+                  <ul className="space-y-3">
+                    {selectedServices.map(id => {
+                      const s = services.find(x => x.id === id);
+                      const Icon = s?.icon || Camera;
+                      return (
+                        <li key={id} className="flex items-center gap-3">
+                          <div className="w-6 h-6 rounded-md bg-blue-50 flex items-center justify-center shrink-0">
+                            <Icon className="w-3.5 h-3.5 text-blue-600" />
+                          </div>
+                          <span className="text-sm font-medium text-slate-700">{s?.name}</span>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-slate-400 italic">Nenhum selecionado</p>
+                )}
+              </div>
+
+              {/* Agendamento */}
+              <div className="border-t border-slate-100 pt-5">
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Agendamento</p>
+                {selectedDate ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-3">
+                      <Calendar className="w-4 h-4 text-blue-600 shrink-0" />
+                      <span className="text-sm font-medium text-slate-800">{selectedDate.toLocaleDateString('pt-BR')}</span>
+                    </div>
+                    {selectedTime ? (
+                      <div className="flex items-center gap-3">
+                        <Clock className="w-4 h-4 text-blue-600 shrink-0" />
+                        <span className="text-sm font-medium text-slate-800">{selectedTime}</span>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-400 pl-7">Horário pendente...</p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-400 italic flex items-center gap-2"><Calendar className="w-4 h-4" /> A definir...</p>
+                )}
+              </div>
+
+              {/* TotaLs */}
+              <div className="bg-slate-50 -mx-6 -mb-6 p-6 border-t border-slate-100 mt-2">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm text-slate-500">Duração estimada</span>
+                  <span className="font-semibold text-slate-800 flex items-center gap-1"><Clock className="w-3.5 h-3.5" />{getTotalDuration()} min</span>
+                </div>
+                {showPrices && (
+                  <div className="flex justify-between items-center pt-2 border-t border-slate-200 mt-2">
+                    <span className="text-base font-bold text-slate-700">Total</span>
+                    <span className="text-xl font-bold text-blue-600">R$ {getTotalPrice()},00</span>
+                  </div>
+                )}
               </div>
             </div>
-          )}
-
+          </div>
         </div>
       </div>
-    </div >
+    </div>
   );
 }
 
