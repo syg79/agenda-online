@@ -1,0 +1,374 @@
+Entendi seu cenário! Você tem uma equipe de 5 fotógrafos que precisam de um sistema inteligente de agendamento baseado em proximidade geográfica, sem a complexidade do OR-Tools. Vou propor uma arquitetura prática que aproveita sua stack (Tadabase/Vercel/Supabase) e usa uma abordagem de "matriz de distâncias dinâmica".
+
+## 🎯 Arquitetura Proposta: "Clusterização Dinâmica por Proximidade"
+
+### 1. Estrutura de Dados Principal
+
+```sql
+-- Supabase: Tabela de locais (imóveis)
+CREATE TABLE locais (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    ref VARCHAR(20) UNIQUE NOT NULL,  -- número do pedido
+    endereco TEXT NOT NULL,
+    lat DECIMAL(10,8) NOT NULL,
+    lng DECIMAL(11,8) NOT NULL,
+    bairro VARCHAR(100),  -- para filtro inicial rápido
+    cidade VARCHAR(100),
+    status VARCHAR(20) DEFAULT 'pendente', -- pendente, agendado, concluido
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Tabela de matriz de distâncias (esparsa - só armazena próximos)
+CREATE TABLE distancias_locais (
+    local_origem_id UUID REFERENCES locais(id),
+    local_destino_id UUID REFERENCES locais(id),
+    distancia_km DECIMAL(6,2),  -- distância real de rota
+    tempo_minutos INT,          -- tempo estimado de deslocamento
+    PRIMARY KEY (local_origem_id, local_destino_id)
+);
+
+-- Tabela de agendas (5 fotógrafos, slots de 1h)
+CREATE TABLE agendas (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    fotografo_id INT NOT NULL CHECK (fotografo_id BETWEEN 1 AND 5),
+    data DATE NOT NULL,
+    hora_slot INT NOT NULL CHECK (hora_slot BETWEEN 8 AND 17), -- 08:00-17:00 = 10 slots
+    local_id UUID REFERENCES locais(id),
+    status VARCHAR(20) DEFAULT 'disponivel', -- disponivel, reservado, concluido
+    UNIQUE(fotografo_id, data, hora_slot)
+);
+```
+
+### 2. API de Distância (Edge Function Vercel)
+
+```typescript
+// api/distance-matrix.ts - Edge Function otimizada
+import { createClient } from '@supabase/supabase-js';
+
+interface Coord {
+  lat: number;
+  lng: number;
+}
+
+// Cache em memória para sessão (Redis seria ideal para produção)
+const distanceCache = new Map<string, number>();
+
+export default async function handler(req: Request) {
+  const { origem, candidatos, maxDistancia = 5 } = await req.json();
+  
+  // 1. Filtro rápido por distância euclidiana (barato)
+  const proximosEuclidiana = candidatos
+    .map((c: Coord & { id: string }) => ({
+      ...c,
+      distEuclid: haversine(origem.lat, origem.lng, c.lat, c.lng)
+    }))
+    .filter(c => c.distEuclid <= maxDistancia * 1.5) // margem de segurança
+    .sort((a, b) => a.distEuclid - b.distEuclid)
+    .slice(0, 20); // máximo 20 para API de rota
+  
+  // 2. Para os mais próximos, busca distância real de rota (OSRM ou cache)
+  const matrizDistancias = await Promise.all(
+    proximosEuclidiana.map(async (dest) => {
+      const cacheKey = `${origem.lat},${origem.lng}|${dest.lat},${dest.lng}`;
+      
+      if (distanceCache.has(cacheKey)) {
+        return { ...dest, distanciaReal: distanceCache.get(cacheKey)! };
+      }
+      
+      // OSRM - gratuito e rápido para distâncias
+      const distancia = await getOSRMDistance(origem, dest);
+      distanceCache.set(cacheKey, distancia);
+      
+      return { ...dest, distanciaReal: distancia };
+    })
+  );
+  
+  // 3. Filtra e ordena por distância real
+  return matrizDistancias
+    .filter(d => d.distanciaReal <= maxDistancia)
+    .sort((a, b) => a.distanciaReal - b.distanciaReal)
+    .slice(0, 12); // top 12 mais próximos
+}
+
+// OSRM - Open Source Routing Machine (gratuito)
+async function getOSRMDistance(a: Coord, b: Coord): Promise<number> {
+  const url = `https://router.project-osrm.org/route/v1/driving/${a.lng},${a.lat};${b.lng},${b.lat}?overview=false`;
+  const res = await fetch(url);
+  const data = await res.json();
+  return data.routes[0].distance / 1000; // km
+}
+
+function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+```
+
+### 3. Algoritmo de Agendamento (Greedy Inteligente)
+
+```typescript
+// lib/scheduler.ts - Lógica de alocação sem OR-Tools
+
+interface Slot {
+  fotografoId: number;
+  hora: number; // 8-17
+  localAtual?: Local;
+  ocupado: boolean;
+}
+
+interface Local {
+  id: string;
+  ref: string;
+  lat: number;
+  lng: number;
+  endereco: string;
+}
+
+interface AgendamentoSugerido {
+  local: Local;
+  fotografoId: number;
+  horario: string; // "09:00"
+  score: number;   // quão bom é esse agendamento
+}
+
+export function sugerirAgendamentos(
+  novoLocal: Local,
+  locaisExistentes: Local[],
+  agendasDoDia: Slot[],
+  matrizDistancias: Map<string, number>
+): AgendamentoSugerido[] {
+  
+  const sugestoes: AgendamentoSugerido[] = [];
+  
+  // Para cada fotógrafo, encontra o melhor slot
+  for (let fotoId = 1; fotoId <= 5; fotoId++) {
+    const slotsDoFotografo = agendasDoDia
+      .filter(s => s.fotografoId === fotoId && !s.ocupado)
+      .sort((a, b) => a.hora - b.hora);
+    
+    // Encontra slots adjacentes a locais já agendados (clusterização)
+    const slotsComContexto = slotsDoFotografo.map(slot => {
+      const contexto = calcularContexto(slot, novoLocal, matrizDistancias);
+      return { slot, ...contexto };
+    });
+    
+    // Prioriza: 1) próximo a local existente, 2) início do dia, 3) minimizar deslocamento geral
+    const melhorSlot = slotsComContexto
+      .sort((a, b) => b.score - a.score)[0];
+    
+    if (melhorSlot) {
+      sugestoes.push({
+        local: novoLocal,
+        fotografoId: fotoId,
+        horario: `${melhorSlot.slot.hora.toString().padStart(2,'0')}:00`,
+        score: melhorSlot.score
+      });
+    }
+  }
+  
+  // Retorna top 5 sugestões ordenadas por score
+  return sugestoes
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5);
+}
+
+function calcularContexto(
+  slot: Slot,
+  novoLocal: Local,
+  matriz: Map<string, number>
+) {
+  let score = 100;
+  let distanciaAnterior = 0;
+  let distanciaProximo = 0;
+  
+  // Se tem local anterior no mesmo fotógrafo
+  if (slot.localAtual) {
+    const key = `${slot.localAtual.id}|${novoLocal.id}`;
+    distanciaAnterior = matriz.get(key) || haversineQuick(slot.localAtual, novoLocal);
+    score -= distanciaAnterior * 10; // penalidade por distância
+  } else {
+    score -= 20; // penalidade por primeiro do dia (setup)
+  }
+  
+  // Bônus por horário produtivo (evita buracos na agenda)
+  const horaPico = slot.hora >= 9 && slot.hora <= 16;
+  if (horaPico) score += 15;
+  
+  // Penalidade por horário muito cedo/tarde
+  if (slot.hora === 8 || slot.hora === 17) score -= 10;
+  
+  return { score, distanciaAnterior, distanciaProximo };
+}
+```
+
+### 4. Interface Visual (React/Vue - adaptável ao Tadabase)
+
+```tsx
+// components/AgendadorInteligente.tsx
+export function AgendadorInteligente({ novoPedido }) {
+  const [matriz, setMatriz] = useState<MatrizDistancia | null>(null);
+  const [sugestoes, setSugestoes] = useState<Sugestao[]>([]);
+  
+  useEffect(() => {
+    // 1. Carrega locais do dia para comparação
+    carregarLocaisDoDia().then(async (locaisExistentes) => {
+      
+      // 2. Calcula matriz de distâncias dinâmica
+      const { data: matriz } = await fetch('/api/distance-matrix', {
+        method: 'POST',
+        body: JSON.stringify({
+          origem: { lat: novoPedido.lat, lng: novoPedido.lng },
+          candidatos: locaisExistentes,
+          maxDistancia: 5 // km
+        })
+      }).then(r => r.json());
+      
+      setMatriz(matriz);
+      
+      // 3. Gera sugestões de agendamento
+      const sugestoes = sugerirAgendamentos(
+        novoPedido,
+        locaisExistentes,
+        await carregarAgendasDoDia(),
+        matriz
+      );
+      
+      setSugestoes(sugestoes);
+    });
+  }, [novoPedido]);
+  
+  return (
+    <div className="grid grid-cols-2 gap-6">
+      {/* Visualização tipo sua imagem */}
+      <div className="matriz-distancias">
+        <h3>Matriz de Proximidade</h3>
+        <MatrizVisual 
+          referencia={novoPedido}
+          proximos={matriz?.proximos || []}
+          onHover={(local) => highlightNoMapa(local)}
+        />
+      </div>
+      
+      {/* Sugestões de agendamento */}
+      <div className="sugestoes">
+        <h3>Melhores Opções de Agendamento</h3>
+        {sugestoes.map((s, i) => (
+          <SugestaoCard 
+            key={i}
+            rank={i + 1}
+            fotografo={s.fotografoId}
+            horario={s.horario}
+            score={s.score}
+            distancia={s.distanciaAnterior}
+            onSelecionar={() => confirmarAgendamento(s)}
+          />
+        ))}
+      </div>
+      
+      {/* Mapa visual */}
+      <MapaInterativo 
+        centro={novoPedido}
+        marcadores={[
+          { ...novoPedido, tipo: 'novo', cor: 'verde' },
+          ...matriz?.proximos.map(l => ({ ...l, tipo: 'existente', cor: 'laranja' })) || []
+        ]}
+      />
+    </div>
+  );
+}
+```
+
+### 5. Componente Visual da Matriz (igual suas imagens)
+
+```tsx
+// components/MatrizVisual.tsx
+export function MatrizVisual({ referencia, proximos, onHover }) {
+  // Monta matriz triangular como nas suas imagens
+  const matriz = useMemo(() => {
+    const todos = [referencia, ...proximos.slice(0, 8)]; // máx 8x8
+    return todos.map((origem, i) => 
+      todos.map((destino, j) => {
+        if (i === j) return { tipo: 'diagonal', valor: '-' };
+        if (i > j) return { tipo: 'espelho', valor: null }; // só mostra triangular superior
+        
+        const dist = calcularDistancia(origem, destino);
+        return {
+          tipo: 'distancia',
+          valor: dist.toFixed(1),
+          cor: dist < 1 ? 'verde' : dist < 2 ? 'amarelo' : 'laranja'
+        };
+      })
+    );
+  }, [referencia, proximos]);
+  
+  return (
+    <table className="matriz-distancias">
+      <thead>
+        <tr>
+          <th>{referencia.ref}</th>
+          {proximos.slice(0,8).map(p => <th key={p.id}>{p.ref}</th>)}
+        </tr>
+      </thead>
+      <tbody>
+        {matriz.map((linha, i) => (
+          <tr key={i}>
+            <th className={i === 0 ? 'referencia' : ''}>
+              {i === 0 ? '—' : proximos[i-1].ref}
+            </th>
+            {linha.map((celula, j) => (
+              <td 
+                key={j}
+                className={`celula-${celula.tipo} bg-${celula.cor}`}
+                onMouseEnter={() => onHover?.(proximos[j-1])}
+              >
+                {celula.valor}
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+```
+
+## 🚀 Fluxo de Implementação Recomendado
+
+| Fase | Entrega | Tempo Est. |
+|------|---------|-----------|
+| **1** | API de distância + cache básico | 2-3 dias |
+| **2** | Matriz visual + mapa interativo | 2-3 dias |
+| **3** | Algoritmo greedy de agendamento | 2-3 dias |
+| **4** | Integração Tadabase/Supabase | 3-4 dias |
+| **5** | Otimizações (batch, prefetch) | contínuo |
+
+## 💡 Otimizações Futuras (sem OR-Tools)
+
+```typescript
+// Melhorias que você pode adicionar depois:
+
+// 1. Simulated Annealing simples para otimizar dia inteiro
+function otimizarDia(agendaInicial: Slot[]): Slot[] {
+  let melhor = agendaInicial;
+  let temperatura = 100;
+  
+  while (temperatura > 1) {
+    const vizinho = gerarVizinho(melhor); // troca dois slots
+    const delta = calcularCusto(vizinho) - calcularCusto(melhor);
+    
+    if (delta < 0 || Math.random() < Math.exp(-delta/temperatura)) {
+      melhor = vizinho;
+    }
+    temperatura *= 0.95;
+  }
+  return melhor;
+}
+
+// 2. Pre-computar distâncias em batch durante a noite
+// 3. Usar H3 (Uber) para clusterização geográfica prévia
+```
+
+Quer que eu detalhe alguma parte específica? Posso também criar uma versão mais simples se preferir começar com o mínimo viável.

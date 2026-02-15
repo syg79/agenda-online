@@ -19,7 +19,8 @@ export async function GET(request: Request) {
         // Correct for timezone if needed, or rely on client sending YYYY-MM-DD which JS parses as UTC
         // availabilityService expects a Date object and extracts YYYY-MM-DD
 
-        const slots = await getAvailability(date, services);
+        const neighborhood = searchParams.get('neighborhood');
+        const slots = await getAvailability(date, services, neighborhood || undefined);
 
         return NextResponse.json({ slots });
 

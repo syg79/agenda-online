@@ -1,0 +1,111 @@
+A sua ideia de criar uma matriz de distâncias simplificada é excelente e totalmente viável sem precisar recorrer a bibliotecas complexas como o OR-Tools. Como você já está testando o **Supabase** e o **Vercel**, você tem em mãos a ferramenta perfeita para resolver isso de forma elegante e muito rápida: o banco de dados PostgreSQL com a extensão **PostGIS** (nativa no Supabase).
+
+Aqui está um plano de como você pode montar essa arquitetura para replicar exatamente o que as suas imagens mostram, focado na simplicidade.
+
+---
+
+### O Fluxo do Sistema
+
+1. **Entrada do Pedido:** O cliente preenche o endereço no Tadabase.
+2. **Geocodificação (Vercel):** Uma função no Vercel pega esse endereço e transforma em Latitude/Longitude.
+3. **Busca de Proximidade (Supabase):** O banco de dados acha os serviços já agendados mais próximos.
+4. **Sugestão de Agenda:** O sistema cruza as distâncias com os horários livres dos 5 fotógrafos.
+5. **Retorno (Tadabase):** A tela exibe a lista/matriz conforme suas imagens.
+
+---
+
+### Passo a Passo da Solução
+
+#### 1. Geocodificação e Distâncias (Usando OpenStreetMap)
+Como você mencionou o OpenStreetMap (OSM), você pode usar APIs gratuitas ligadas a ele para não gastar com Google Maps nesta fase:
+*   **Para transformar endereço em Lat/Lng:** Use a API do **Nominatim** (baseada no OSM).
+*   **Para calcular a distância real (ruas):** Use a API do **OSRM (Open Source Routing Machine)**. É grátis e calcula a distância de condução e o tempo estimado.
+
+#### 2. Configurando o Supabase (O Segredo: PostGIS)
+Em vez de calcular a distância de *todos contra todos* no seu código, o Supabase faz isso no banco de dados em milissegundos.
+
+1. No Supabase, vá em *Database* -> *Extensions* e ative o **PostGIS**.
+2. Crie sua tabela de `agendamentos`:
+
+```sql
+CREATE TABLE agendamentos (
+  id serial primary key,
+  fotografo_id int, -- 1 a 5
+  data_servico date,
+  hora_inicio time, -- 08:00, 09:00, etc.
+  endereco text,
+  lat double precision,
+  lng double precision,
+  localizacao geography(POINT) -- O campo mágico do PostGIS
+);
+```
+
+#### 3. A Lógica da "Matriz" (Função no Vercel)
+Quando o novo pedido chegar, o Vercel fará o seguinte:
+
+**A) Descobre a Lat/Lng do novo pedido:**
+```javascript
+// Exemplo de chamada ao Nominatim (OSM)
+const address = "Rua das Flores, 101, Curitiba";
+const geoResponse = await fetch(`https://nominatim.openstreetmap.org/search?q=${address}&format=json`);
+const [{ lat, lon }] = await geoResponse.json();
+```
+
+**B) Busca no Supabase os mais próximos:**
+Você cria uma função no Supabase (RPC) ou uma query simples que já traz a distância em linha reta apenas para filtrar os, digamos, 10 mais próximos daquele dia:
+
+```sql
+-- Exemplo de Query no Supabase
+SELECT 
+  id, endereco, fotografo_id, hora_inicio,
+  ST_Distance(localizacao, ST_Point(novo_lng, novo_lat)::geography) / 1000 AS distancia_km
+FROM agendamentos
+WHERE data_servico = '2023-11-10'
+ORDER BY distancia_km ASC
+LIMIT 10;
+```
+
+**C) Calcula o tempo de rota (OSRM) e sugere o horário:**
+Agora que você tem os 10 mais próximos, o Vercel verifica os horários:
+
+*   Se o fotógrafo 2 tem um serviço a 2km de distância às 10:00.
+*   O sistema verifica a agenda do fotógrafo 2. O horário das 09:00 ou 11:00 está livre?
+*   Se sim, ele sugere esse horário.
+
+#### 4. Gerando a Tabela Visual
+O Vercel devolverá um JSON para o Tadabase estruturado exatamente para alimentar a tabela da sua imagem:
+
+```json
+[
+  {
+    "endereco": "Av. dos Pinheiros, 30",
+    "distancia": "1.0 km",
+    "fotografo_sugerido": "Fotógrafo 2",
+    "horario_sugerido": "15:00",
+    "status": "livre"
+  },
+  {
+    "endereco": "Praça das Acácias, 10",
+    "distancia": "1.4 km",
+    "fotografo_sugerido": "Fotógrafo 4",
+    "horario_sugerido": "16:00",
+    "status": "livre"
+  }
+]
+```
+
+### Como lidar com os Slots de 1 Hora (08:00 as 18:00)
+Como você dividiu o dia em blocos fixos, a lógica fica muito mais simples.
+Você só precisa de uma regra no código (Vercel) que faça o seguinte:
+
+1. Pegue o agendamento mais próximo (Ex: `Agendamento A`, feito pelo Fotógrafo 1 às `14:00`).
+2. O novo local fica a 15 minutos de carro (retornado pelo OSRM) do `Agendamento A`.
+3. Verifique se o Fotógrafo 1 está livre às `13:00` ou às `15:00`.
+4. Se estiver livre, esta é a "Sugestão Ouro" e vai para o topo da lista.
+5. Se o Fotógrafo 1 estiver ocupado, veja quem é o segundo fotógrafo mais próximo naquele dia, e repita.
+
+### Resumo das Vantagens dessa abordagem:
+* **Sem OR-Tools:** A matemática pesada é resolvida pela união do PostGIS (Supabase) + OSRM (API de rotas gratuita).
+* **Fácil de testar:** Você pode criar a API no Vercel (Node.js/TypeScript) e testar enviando requisições pelo Postman ou pelo próprio Tadabase.
+* **Escalável:** O PostGIS consegue buscar pontos próximos em uma base de milhões de registros em frações de segundo.
+* **Baixo custo:** Nominatim e OSRM são gratuitos, Vercel e Supabase têm planos gratuitos muito generosos para quem está em fase de testes.

@@ -1,22 +1,95 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { getAdminData, updatePhotographerNeighborhoods, updatePhotographerServices } from './actions';
 
 export default function AdminDashboard() {
     const [activeTab, setActiveTab] = useState('skills');
+    const [photographers, setPhotographers] = useState<any[]>([]);
+    const [neighborhoods, setNeighborhoods] = useState<string[]>([]);
+    const [selectedPhotographerId, setSelectedPhotographerId] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        getAdminData().then(data => {
+            setPhotographers(data.photographers);
+            setNeighborhoods(data.neighborhoods);
+            setIsLoading(false);
+        });
+    }, []);
+
+    const handleServiceToggle = async (photographerId: string, service: string) => {
+        const photographer = photographers.find(p => p.id === photographerId);
+        if (!photographer) return;
+
+        let newServices = [...photographer.services];
+        // Special 'ALL' logic
+        if (service === 'ALL') {
+            if (newServices.includes('ALL')) {
+                newServices = []; // Deselect All
+            } else {
+                newServices = ['photo', 'video', 'drone', 'video_portrait', 'video_landscape', 'ALL']; // Select All common
+            }
+        } else {
+            if (newServices.includes(service)) {
+                newServices = newServices.filter(s => s !== service);
+            } else {
+                newServices.push(service);
+            }
+        }
+
+        // Optimistic Update
+        setPhotographers(prev => prev.map(p => p.id === photographerId ? { ...p, services: newServices } : p));
+
+        await updatePhotographerServices(photographerId, newServices);
+    };
+
+    const handleNeighborhoodToggle = async (photographerId: string, neighborhood: string) => {
+        const photographer = photographers.find(p => p.id === photographerId);
+        if (!photographer) return;
+
+        let newNeighborhoods = [...photographer.neighborhoods];
+
+        if (neighborhood === 'ALL') {
+            if (newNeighborhoods.includes('ALL')) {
+                newNeighborhoods = [];
+            } else {
+                newNeighborhoods = ['ALL']; // If ALL is selected, maybe clear specific ones? Or keep them? Let's just use ALL as a token.
+            }
+        } else {
+            // If 'ALL' was previously selected, remove it because we are now selecting specific
+            if (newNeighborhoods.includes('ALL')) {
+                newNeighborhoods = newNeighborhoods.filter(n => n !== 'ALL');
+            }
+
+            if (newNeighborhoods.includes(neighborhood)) {
+                newNeighborhoods = newNeighborhoods.filter(n => n !== neighborhood);
+            } else {
+                newNeighborhoods.push(neighborhood);
+            }
+        }
+
+        // Optimistic Update
+        setPhotographers(prev => prev.map(p => p.id === photographerId ? { ...p, neighborhoods: newNeighborhoods } : p));
+
+        await updatePhotographerNeighborhoods(photographerId, newNeighborhoods);
+    };
+
+
+    if (isLoading) return <div className="p-8 text-center text-slate-500">Carregando dados...</div>;
 
     return (
         <div className="min-h-screen bg-slate-50 p-8">
             <div className="max-w-6xl mx-auto space-y-8">
                 <div>
                     <h1 className="text-3xl font-bold text-slate-800">Administração</h1>
-                    <p className="text-slate-500">Gerenciamento de Habilidades, Regiões e Preferências</p>
+                    <p className="text-slate-500">Gerenciamento de Habilidades e Regiões</p>
                 </div>
 
                 {/* Custom Tabs */}
                 <div className="space-y-4">
                     <div className="flex space-x-1 rounded-xl bg-slate-200 p-1 w-fit">
-                        {['skills', 'regions', 'clients'].map((tab) => (
+                        {['skills', 'regions'].map((tab) => (
                             <button
                                 key={tab}
                                 onClick={() => setActiveTab(tab)}
@@ -26,7 +99,7 @@ export default function AdminDashboard() {
                                         : 'text-slate-600 hover:bg-white/[0.12] hover:text-slate-800'
                                     }`}
                             >
-                                {tab === 'skills' ? 'Habilidades' : tab === 'regions' ? 'Regiões' : 'Clientes'}
+                                {tab === 'skills' ? 'Habilidades' : 'Regiões'}
                             </button>
                         ))}
                     </div>
@@ -37,30 +110,26 @@ export default function AdminDashboard() {
                             <div className="bg-white rounded-lg border shadow-sm">
                                 <div className="p-6 border-b">
                                     <h3 className="text-xl font-semibold text-slate-800">Habilidades dos Fotógrafos</h3>
-                                    <p className="text-sm text-slate-500 mt-1">Selecione quais serviços cada fotógrafo pode realizar.</p>
+                                    <p className="text-sm text-slate-500 mt-1">Selecione serviços (Foto, Vídeo, Drone).</p>
                                 </div>
                                 <div className="p-6">
                                     <div className="border rounded-lg divide-y">
-                                        <div className="p-4 bg-slate-50 font-medium grid grid-cols-4 gap-4 text-sm text-slate-600">
+                                        <div className="p-4 bg-slate-50 font-medium grid grid-cols-5 gap-4 text-sm text-slate-600">
                                             <div>Fotógrafo</div>
                                             <div className="text-center">Foto</div>
                                             <div className="text-center">Vídeo</div>
                                             <div className="text-center">Drone</div>
+                                            <div className="text-center">Tudo (ALL)</div>
                                         </div>
-                                        {/* Mocks */}
-                                        {['Rafael', 'Augusto', 'Renato', 'Rodrigo'].map((name) => (
-                                            <div key={name} className="p-4 grid grid-cols-4 gap-4 items-center">
-                                                <div className="font-medium text-slate-800">{name}</div>
-                                                <div className="flex justify-center"><input type="checkbox" defaultChecked={true} className="w-5 h-5 text-blue-600 rounded" /></div>
-                                                <div className="flex justify-center"><input type="checkbox" defaultChecked={name !== 'Renato' && name !== 'Rodrigo'} className="w-5 h-5 text-blue-600 rounded" /></div>
-                                                <div className="flex justify-center"><input type="checkbox" defaultChecked={name === 'Rafael'} className="w-5 h-5 text-blue-600 rounded" /></div>
+                                        {photographers.map((p) => (
+                                            <div key={p.id} className="p-4 grid grid-cols-5 gap-4 items-center hover:bg-slate-50 transition">
+                                                <div className="font-medium text-slate-800">{p.name}</div>
+                                                <div className="flex justify-center"><input type="checkbox" checked={p.services.includes('photo') || p.services.includes('ALL')} onChange={() => handleServiceToggle(p.id, 'photo')} className="w-5 h-5 accent-blue-600" /></div>
+                                                <div className="flex justify-center"><input type="checkbox" checked={p.services.includes('video_landscape') || p.services.includes('ALL')} onChange={() => handleServiceToggle(p.id, 'video_landscape')} className="w-5 h-5 accent-blue-600" /></div>
+                                                <div className="flex justify-center"><input type="checkbox" checked={p.services.includes('drone_photo') || p.services.includes('ALL')} onChange={() => handleServiceToggle(p.id, 'drone_photo')} className="w-5 h-5 accent-blue-600" /></div>
+                                                <div className="flex justify-center"><input type="checkbox" checked={p.services.includes('ALL')} onChange={() => handleServiceToggle(p.id, 'ALL')} className="w-5 h-5 accent-blue-600" /></div>
                                             </div>
                                         ))}
-                                    </div>
-                                    <div className="mt-4 flex justify-end">
-                                        <button className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg">
-                                            Salvar Alterações
-                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -68,98 +137,85 @@ export default function AdminDashboard() {
 
                         {/* REGIONS TAB */}
                         {activeTab === 'regions' && (
-                            <div className="bg-white rounded-lg border shadow-sm">
-                                <div className="p-6 border-b flex justify-between items-center">
-                                    <div>
-                                        <h3 className="text-xl font-semibold text-slate-800">Regiões de Atendimento</h3>
+                            <div className="bg-white rounded-lg border shadow-sm p-6">
+                                <div className="flex gap-6">
+                                    {/* Left: Photographer List */}
+                                    <div className="w-1/3 border-r pr-6 space-y-2">
+                                        <h3 className="font-semibold text-slate-700 mb-4">Selecione o Fotógrafo</h3>
+                                        {photographers.map(p => (
+                                            <button
+                                                key={p.id}
+                                                onClick={() => setSelectedPhotographerId(p.id)}
+                                                className={`w-full text-left px-4 py-3 rounded-lg border transition flex justify-between items-center ${selectedPhotographerId === p.id ? 'bg-blue-50 border-blue-200 text-blue-700 font-medium' : 'bg-white border-slate-200 hover:bg-slate-50'}`}
+                                            >
+                                                {p.name}
+                                                <span className="text-xs bg-slate-200 px-2 py-0.5 rounded text-slate-600">
+                                                    {p.neighborhoods.includes('ALL') ? 'Toda Curitiba' : `${p.neighborhoods.length} bairros`}
+                                                </span>
+                                            </button>
+                                        ))}
                                     </div>
-                                    <button className="border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium py-2 px-4 rounded-lg text-sm">
-                                        + Nova Região
-                                    </button>
-                                </div>
-                                <div className="p-6">
-                                    <div className="grid md:grid-cols-2 gap-4">
-                                        {/* Mock Regions */}
-                                        <div className="border rounded-lg p-4 bg-white hover:border-blue-300 transition">
-                                            <div className="flex justify-between mb-2">
-                                                <h3 className="font-bold text-lg text-slate-800">Curitiba - Central</h3>
-                                                <span className="bg-slate-100 text-slate-600 text-xs font-semibold px-2.5 py-0.5 rounded">4 Fotógrafos</span>
+
+                                    {/* Right: Neighborhood Configuration */}
+                                    <div className="flex-1">
+                                        {!selectedPhotographerId ? (
+                                            <div className="h-full flex items-center justify-center text-slate-400 italic">
+                                                Selecione um fotógrafo para editar a área de atuação.
                                             </div>
-                                            <p className="text-sm text-slate-600 mb-4">Bairros: Centro, Batel, Água Verde...</p>
-                                            <div className="flex gap-2">
-                                                <button className="text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded">Editar</button>
-                                                <button className="text-sm text-red-600 hover:bg-red-50 px-3 py-1.5 rounded">Excluir</button>
+                                        ) : (
+                                            <div>
+                                                {(() => {
+                                                    const p = photographers.find(x => x.id === selectedPhotographerId);
+                                                    if (!p) return null;
+                                                    return (
+                                                        <>
+                                                            <div className="flex justify-between items-center mb-4">
+                                                                <h3 className="font-bold text-lg text-slate-800">Área de Atuação: {p.name}</h3>
+                                                                <div className="flex items-center gap-2">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        id="all_regions"
+                                                                        checked={p.neighborhoods.includes('ALL')}
+                                                                        onChange={() => handleNeighborhoodToggle(p.id, 'ALL')}
+                                                                        className="w-5 h-5 accent-blue-600"
+                                                                    />
+                                                                    <label htmlFor="all_regions" className="text-sm font-medium text-slate-700">Atende Toda Curitiba (ALL)</label>
+                                                                </div>
+                                                            </div>
+
+                                                            {!p.neighborhoods.includes('ALL') && (
+                                                                <>
+                                                                    <p className="text-sm text-slate-500 mb-4">Selecione os bairros específicos:</p>
+                                                                    <div className="grid grid-cols-3 gap-2 h-[400px] overflow-y-auto pr-2 border rounded-lg p-4 bg-slate-50">
+                                                                        {neighborhoods.sort().map(n => (
+                                                                            <label key={n} className="flex items-center gap-2 p-2 hover:bg-white rounded cursor-pointer transition">
+                                                                                <input
+                                                                                    type="checkbox"
+                                                                                    checked={p.neighborhoods.includes(n)}
+                                                                                    onChange={() => handleNeighborhoodToggle(p.id, n)}
+                                                                                    className="w-4 h-4 accent-blue-600"
+                                                                                />
+                                                                                <span className="text-sm text-slate-700">{n}</span>
+                                                                            </label>
+                                                                        ))}
+                                                                    </div>
+                                                                </>
+                                                            )}
+                                                            {p.neighborhoods.includes('ALL') && (
+                                                                <div className="p-8 bg-blue-50 text-blue-800 rounded-lg text-center border border-blue-100">
+                                                                    Este fotógrafo está configurado para atender <strong>todos os bairros</strong> de Curitiba.
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    );
+                                                })()}
                                             </div>
-                                        </div>
-                                        <div className="border rounded-lg p-4 bg-white hover:border-blue-300 transition">
-                                            <div className="flex justify-between mb-2">
-                                                <h3 className="font-bold text-lg text-slate-800">Curitiba - Sul</h3>
-                                                <span className="bg-slate-100 text-slate-600 text-xs font-semibold px-2.5 py-0.5 rounded">2 Fotógrafos</span>
-                                            </div>
-                                            <p className="text-sm text-slate-600 mb-4">Bairros: Sítio Cercado, Tatuquara...</p>
-                                            <div className="flex gap-2">
-                                                <button className="text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded">Editar</button>
-                                                <button className="text-sm text-red-600 hover:bg-red-50 px-3 py-1.5 rounded">Excluir</button>
-                                            </div>
-                                        </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>
                         )}
 
-                        {/* CLIENTS TAB */}
-                        {activeTab === 'clients' && (
-                            <div className="bg-white rounded-lg border shadow-sm">
-                                <div className="p-6 border-b">
-                                    <h3 className="text-xl font-semibold text-slate-800">Preferências de Clientes</h3>
-                                </div>
-                                <div className="p-6">
-                                    <div className="flex gap-4 mb-6">
-                                        <input
-                                            type="text"
-                                            placeholder="Buscar cliente por email ou nome..."
-                                            className="flex-1 px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                        />
-                                        <button className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg">
-                                            Buscar
-                                        </button>
-                                    </div>
-
-                                    <div className="space-y-4">
-                                        <div className="border rounded-lg p-4">
-                                            <div className="flex justify-between items-start mb-4">
-                                                <div>
-                                                    <h3 className="font-bold text-lg text-slate-800">Imobiliária J8</h3>
-                                                    <p className="text-slate-500 text-sm">j8@cliente.com</p>
-                                                </div>
-                                                <button className="border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium py-1.5 px-3 rounded-lg text-xs">
-                                                    Adicionar Preferência
-                                                </button>
-                                            </div>
-
-                                            <div className="bg-slate-50 p-4 rounded-lg space-y-2">
-                                                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Ordem de Prioridade</p>
-                                                <div className="flex items-center gap-3 bg-white p-3 rounded border shadow-sm">
-                                                    <span className="bg-blue-100 text-blue-700 w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold">1</span>
-                                                    <span className="font-medium text-slate-800">Renato</span>
-                                                    <span className="text-xs text-slate-400 ml-auto flex gap-2">
-                                                        <span className="bg-slate-100 px-2 py-0.5 rounded text-[10px] font-semibold">Foto</span>
-                                                    </span>
-                                                </div>
-                                                <div className="flex items-center gap-3 bg-white p-3 rounded border shadow-sm">
-                                                    <span className="bg-slate-100 text-slate-700 w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold">2</span>
-                                                    <span className="font-medium text-slate-800">Augusto</span>
-                                                    <span className="text-xs text-slate-400 ml-auto flex gap-2">
-                                                        <span className="bg-slate-100 px-2 py-0.5 rounded text-[10px] font-semibold">Foto</span>
-                                                        <span className="bg-slate-100 px-2 py-0.5 rounded text-[10px] font-semibold">Vídeo</span>
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
                     </div>
                 </div>
             </div>

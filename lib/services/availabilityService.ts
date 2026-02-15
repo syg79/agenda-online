@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma';
-import { calculateEndTime, timeToMinutes, getServicesRequiringDrone, getServicesRequiringVideo } from '@/lib/utils';
-import { SERVICES } from '@/lib/constants';
+import { calculateEndTime, timeToMinutes } from '@/lib/utils';
+import { getValidPhotographers } from '@/lib/scheduling-rules';
 
 type TimeSlot = {
     time: string;
@@ -8,7 +8,7 @@ type TimeSlot = {
     available: number;
 };
 
-export async function getAvailability(date: Date, serviceIds: string[]): Promise<TimeSlot[]> {
+export async function getAvailability(date: Date, serviceIds: string[], neighborhood?: string): Promise<TimeSlot[]> {
     const dateStr = date.toISOString().split('T')[0];
     const dayOfWeek = date.getUTCDay(); // 0=Sun, 6=Sat
 
@@ -35,39 +35,8 @@ export async function getAvailability(date: Date, serviceIds: string[]): Promise
     const slotsNeeded = Math.ceil(durationWithBuffer / 30);
     const totalDuration = slotsNeeded * 30;
 
-    // 3. Filter Photographers by Capability
-    const needsDrone = serviceIds.some(id => id.includes('drone'));
-    const needsVideo = serviceIds.some(id => id.includes('video'));
-
-    // Fetch active photographers
-    const allPhotographers = await prisma.photographer.findMany({
-        where: { active: true }
-    });
-
-    // Filter based on static capabilities (approximated for MVP)
-    // In a real app, capabilities would be in the DB.
-    // For MVP: 
-    // - Rafael: Photo, Video, Drone
-    // - Augusto: Photo, Video
-    // - Renato: Photo
-    // - Rodrigo: Photo
-
-    const qualifiedPhotographers = allPhotographers.filter(p => {
-        // For MVP: If services is not defined or empty, assume FULL capability to prevent blocking
-        const services = (p as any).services;
-
-        if (!services || (Array.isArray(services) && services.length === 0)) {
-            return true;
-        }
-
-        const pServices = (Array.isArray(services) ? services : []) as string[];
-
-        // Strict check only if services are explicitly defined
-        if (needsDrone && !pServices.includes('drone')) return false;
-        if (needsVideo && !pServices.some(s => s.includes('video'))) return false;
-
-        return true;
-    });
+    // 3. Filter Photographers by Capability and Location (Rules Engine)
+    const qualifiedPhotographers = await getValidPhotographers(neighborhood || '', serviceIds);
 
     if (qualifiedPhotographers.length === 0) return [];
 

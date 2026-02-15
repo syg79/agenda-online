@@ -1,0 +1,1960 @@
+
+
+# Sistema de Agendamento Geográfico para Fotógrafos
+
+## Arquitetura Geral
+
+```
+┌──────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│   Tadabase   │────▶│  Vercel (API)    │────▶│    Supabase     │
+│  (Frontend)  │◀────│  Next.js Routes  │◀────│   (Database)    │
+└──────────────┘     └───────┬──────────┘     └─────────────────┘
+                             │
+                    ┌────────▼────────┐
+                    │  OSRM (grátis)  │
+                    │  OpenStreetMap  │
+                    └─────────────────┘
+```
+
+---
+
+## 1. Banco de Dados (Supabase)
+
+```sql
+-- ============================================
+-- SCHEMA COMPLETO
+-- ============================================
+
+-- Fotógrafos
+CREATE TABLE photographers (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  email TEXT,
+  phone TEXT,
+  base_lat DOUBLE PRECISION DEFAULT -25.4284, -- Curitiba centro
+  base_lng DOUBLE PRECISION DEFAULT -49.2733,
+  is_active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Inserir 5 fotógrafos
+INSERT INTO photographers (name, base_lat, base_lng) VALUES
+  ('Fotógrafo 1', -25.4284, -49.2733),
+  ('Fotógrafo 2', -25.4284, -49.2733),
+  ('Fotógrafo 3', -25.4284, -49.2733),
+  ('Fotógrafo 4', -25.4284, -49.2733),
+  ('Fotógrafo 5', -25.4284, -49.2733);
+
+-- Pedidos (cada serviço fotográfico)
+CREATE TABLE orders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  external_id TEXT,                    -- ID vindo do Tadabase
+  client_name TEXT NOT NULL,
+  client_phone TEXT,
+  address TEXT NOT NULL,
+  neighborhood TEXT,
+  city TEXT DEFAULT 'Curitiba',
+  
+  -- Coordenadas (preenchidas via geocoding)
+  lat DOUBLE PRECISION,
+  lng DOUBLE PRECISION,
+  geocoded BOOLEAN DEFAULT FALSE,
+  
+  -- Agendamento
+  status TEXT DEFAULT 'pending'
+    CHECK (status IN ('pending','scheduled','in_progress','completed','cancelled')),
+  photographer_id INTEGER REFERENCES photographers(id),
+  scheduled_date DATE,
+  scheduled_slot INTEGER CHECK (scheduled_slot BETWEEN 0 AND 9),
+  -- slot 0=08:00, 1=09:00, ..., 9=17:00
+  
+  estimated_duration INTEGER DEFAULT 1, -- quantos slots (horas) o serviço leva
+  priority INTEGER DEFAULT 5,           -- 1=urgente, 10=baixa
+  notes TEXT,
+  
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Cache de distâncias entre pedidos
+CREATE TABLE distance_matrix (
+  origin_id UUID NOT NULL,
+  destination_id UUID NOT NULL,
+  distance_meters INTEGER,        -- distância real por rota
+  duration_seconds INTEGER,       -- tempo de viagem
+  duration_slots NUMERIC(3,1),    -- tempo convertido em slots
+  calculated_at TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (origin_id, destination_id)
+);
+
+-- Agenda diária (view materializada para consulta rápida)
+CREATE TABLE daily_schedule (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  schedule_date DATE NOT NULL,
+  photographer_id INTEGER REFERENCES photographers(id),
+  slot INTEGER NOT NULL CHECK (slot BETWEEN 0 AND 9),
+  order_id UUID REFERENCES orders(id),
+  slot_type TEXT DEFAULT 'service'
+    CHECK (slot_type IN ('service','travel','break','available')),
+  travel_from_order_id UUID REFERENCES orders(id),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(schedule_date, photographer_id, slot)
+);
+
+-- Índices para performance
+CREATE INDEX idx_orders_status ON orders(status);
+CREATE INDEX idx_orders_coords ON orders(lat, lng) WHERE geocoded = TRUE;
+CREATE INDEX idx_orders_date ON orders(scheduled_date);
+CREATE INDEX idx_schedule_date ON daily_schedule(schedule_date, photographer_id);
+CREATE INDEX idx_distance_origin ON distance_matrix(origin_id);
+
+-- Função auxiliar: converter slot para horário legível
+CREATE OR REPLACE FUNCTION slot_to_time(slot_num INTEGER)
+RETURNS TEXT AS $$
+BEGIN
+  RETURN LPAD((8 + slot_num)::TEXT, 2, '0') || ':00';
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+-- View: agenda do dia formatada
+CREATE OR REPLACE VIEW v_daily_agenda AS
+SELECT
+  ds.schedule_date,
+  p.name AS photographer_name,
+  ds.photographer_id,
+  ds.slot,
+  slot_to_time(ds.slot) AS horario,
+  ds.slot_type,
+  o.client_name,
+  o.address,
+  o.neighborhood,
+  o.lat,
+  o.lng
+FROM daily_schedule ds
+JOIN photographers p ON p.id = ds.photographer_id
+LEFT JOIN orders o ON o.id = ds.order_id
+ORDER BY ds.schedule_date, ds.photographer_id, ds.slot;
+```
+
+---
+
+## 2. Serviços de Geocoding e Distância (OSRM + Nominatim)
+
+```typescript
+// lib/geo-services.ts
+// ============================================
+// SERVIÇOS GEOGRÁFICOS - OSRM (gratuito, usa OpenStreetMap)
+// ============================================
+
+// OSRM público (grátis, sem API key)
+// Para produção pesada, considere hospedar seu próprio OSRM
+const OSRM_BASE = 'https://router.project-osrm.org';
+const NOMINATIM_BASE = 'https://nominatim.openstreetmap.org';
+
+// Rate limiting simples
+const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+// ----- TIPOS -----
+
+interface Coordinates {
+  lat: number;
+  lng: number;
+}
+
+interface GeocodingResult {
+  lat: number;
+  lng: number;
+  display_name: string;
+  confidence: number;
+}
+
+interface DistanceResult {
+  distance_meters: number;
+  duration_seconds: number;
+  duration_slots: number; // convertido para slots de 1h
+}
+
+interface MatrixResult {
+  durations: number[][];  // segundos
+  distances: number[][];  // metros
+}
+
+// ----- GEOCODING (endereço → coordenadas) -----
+
+export async function geocodeAddress(
+  address: string,
+  city: string = 'Curitiba',
+  state: string = 'Paraná'
+): Promise<GeocodingResult | null> {
+  try {
+    const query = `${address}, ${city}, ${state}, Brasil`;
+    const url = new URL(`${NOMINATIM_BASE}/search`);
+    url.searchParams.set('q', query);
+    url.searchParams.set('format', 'json');
+    url.searchParams.set('limit', '1');
+    url.searchParams.set('countrycodes', 'br');
+    // Bounding box de Curitiba/região para melhorar precisão
+    url.searchParams.set('viewbox', '-49.45,-25.60,-49.10,-25.30');
+    url.searchParams.set('bounded', '1');
+
+    const res = await fetch(url.toString(), {
+      headers: {
+        'User-Agent': 'FotoScheduler/1.0 (seu-email@empresa.com)',
+        'Accept-Language': 'pt-BR',
+      },
+    });
+
+    const data = await res.json();
+    
+    if (!data || data.length === 0) {
+      // Tentar sem bounding box
+      url.searchParams.delete('bounded');
+      url.searchParams.delete('viewbox');
+      const res2 = await fetch(url.toString(), {
+        headers: {
+          'User-Agent': 'FotoScheduler/1.0 (seu-email@empresa.com)',
+        },
+      });
+      const data2 = await res2.json();
+      if (!data2 || data2.length === 0) return null;
+      return {
+        lat: parseFloat(data2[0].lat),
+        lng: parseFloat(data2[0].lon),
+        display_name: data2[0].display_name,
+        confidence: parseFloat(data2[0].importance || '0'),
+      };
+    }
+
+    return {
+      lat: parseFloat(data[0].lat),
+      lng: parseFloat(data[0].lon),
+      display_name: data[0].display_name,
+      confidence: parseFloat(data[0].importance || '0'),
+    };
+  } catch (error) {
+    console.error('Geocoding error:', error);
+    return null;
+  }
+}
+
+// ----- DISTÂNCIA ENTRE 2 PONTOS (rota real) -----
+
+export async function getRouteDistance(
+  origin: Coordinates,
+  destination: Coordinates
+): Promise<DistanceResult | null> {
+  try {
+    const coords = `${origin.lng},${origin.lat};${destination.lng},${destination.lat}`;
+    const url = `${OSRM_BASE}/route/v1/driving/${coords}?overview=false`;
+
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if (data.code !== 'Ok' || !data.routes?.[0]) return null;
+
+    const route = data.routes[0];
+    const duration_seconds = route.duration;
+    const distance_meters = route.distance;
+
+    return {
+      distance_meters: Math.round(distance_meters),
+      duration_seconds: Math.round(duration_seconds),
+      // Converter para slots: cada slot = 1h = 3600s
+      // Arredondar para cima em incrementos de 0.5
+      duration_slots: Math.ceil((duration_seconds / 3600) * 2) / 2,
+    };
+  } catch (error) {
+    console.error('Route error:', error);
+    return null;
+  }
+}
+
+// ----- MATRIZ DE DISTÂNCIAS N×N (chamada única!) -----
+// O OSRM Table API calcula todas as distâncias de uma vez
+
+export async function buildDistanceMatrix(
+  points: Coordinates[]
+): Promise<MatrixResult | null> {
+  if (points.length < 2) return null;
+  if (points.length > 100) {
+    console.warn('OSRM public limit: max 100 points. Splitting...');
+    // Para > 100 pontos, dividir em chunks
+  }
+
+  try {
+    // Formato: lng,lat;lng,lat;...
+    const coords = points
+      .map(p => `${p.lng},${p.lat}`)
+      .join(';');
+
+    const url = `${OSRM_BASE}/table/v1/driving/${coords}?annotations=duration,distance`;
+
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if (data.code !== 'Ok') {
+      console.error('OSRM Table error:', data.message);
+      return null;
+    }
+
+    return {
+      durations: data.durations, // matriz NxN em segundos
+      distances: data.distances, // matriz NxN em metros
+    };
+  } catch (error) {
+    console.error('Matrix error:', error);
+    return null;
+  }
+}
+
+// ----- HAVERSINE (fallback rápido, linha reta) -----
+
+export function haversineDistance(
+  a: Coordinates,
+  b: Coordinates
+): number {
+  const R = 6371000; // metros
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+
+  const sinLat = Math.sin(dLat / 2);
+  const sinLng = Math.sin(dLng / 2);
+
+  const h =
+    sinLat * sinLat +
+    Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * sinLng * sinLng;
+
+  return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
+// ----- FILTRO DE PROXIMIDADE (pré-filtro rápido) -----
+
+export function filterNearbyOrders(
+  referencePoint: Coordinates,
+  orders: Array<{ id: string; lat: number; lng: number; [key: string]: any }>,
+  maxDistanceKm: number = 15
+): typeof orders {
+  return orders.filter(order => {
+    const dist = haversineDistance(referencePoint, { lat: order.lat, lng: order.lng });
+    return dist <= maxDistanceKm * 1000;
+  });
+}
+```
+
+---
+
+## 3. Algoritmo de Agendamento (Nearest Neighbor Greedy)
+
+```typescript
+// lib/scheduler.ts
+// ============================================
+// ALGORITMO DE AGENDAMENTO - NEAREST NEIGHBOR
+// Simples, eficiente, sem OR-Tools
+// ============================================
+
+import { buildDistanceMatrix, haversineDistance } from './geo-services';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+// ----- TIPOS -----
+
+interface Order {
+  id: string;
+  lat: number;
+  lng: number;
+  address: string;
+  client_name: string;
+  estimated_duration: number; // slots
+  priority: number;
+  neighborhood?: string;
+}
+
+interface Photographer {
+  id: number;
+  name: string;
+  base_lat: number;
+  base_lng: number;
+}
+
+interface ScheduleSlot {
+  slot: number;          // 0-9
+  time: string;          // "08:00"
+  order_id: string | null;
+  slot_type: 'service' | 'travel' | 'break' | 'available';
+  order?: Order;
+  travel_minutes?: number;
+}
+
+interface PhotographerSchedule {
+  photographer: Photographer;
+  slots: ScheduleSlot[];
+  total_orders: number;
+  total_distance_km: number;
+  efficiency_score: number;
+}
+
+interface ScheduleResult {
+  date: string;
+  schedules: PhotographerSchedule[];
+  unassigned_orders: Order[];
+  stats: {
+    total_orders: number;
+    assigned_orders: number;
+    unassigned_count: number;
+    avg_distance_km: number;
+  };
+}
+
+// ----- CONSTANTES -----
+
+const TOTAL_SLOTS = 10;          // 08:00 a 17:00 (10 horas)
+const SLOT_DURATION_SEC = 3600;  // 1 hora em segundos
+const MAX_TRAVEL_SLOTS = 1.5;    // máximo 1.5h de viagem entre pontos
+const TRAVEL_THRESHOLD_SEC = 900; // < 15 min = não gasta slot extra
+
+// ----- ALGORITMO PRINCIPAL -----
+
+export async function generateDailySchedule(
+  targetDate: string, // 'YYYY-MM-DD'
+  options: {
+    maxDistanceKm?: number;
+    prioritizeUrgent?: boolean;
+    balanceLoad?: boolean;
+  } = {}
+): Promise<ScheduleResult> {
+  const {
+    maxDistanceKm = 20,
+    prioritizeUrgent = true,
+    balanceLoad = true,
+  } = options;
+
+  // 1. Buscar pedidos pendentes
+  const { data: pendingOrders, error: ordersError } = await supabase
+    .from('orders')
+    .select('*')
+    .eq('status', 'pending')
+    .eq('geocoded', true)
+    .is('scheduled_date', null)
+    .order('priority', { ascending: true })
+    .order('created_at', { ascending: true });
+
+  if (ordersError) throw ordersError;
+  if (!pendingOrders?.length) {
+    return {
+      date: targetDate,
+      schedules: [],
+      unassigned_orders: [],
+      stats: { total_orders: 0, assigned_orders: 0, unassigned_count: 0, avg_distance_km: 0 },
+    };
+  }
+
+  // 2. Buscar fotógrafos ativos
+  const { data: photographers } = await supabase
+    .from('photographers')
+    .select('*')
+    .eq('is_active', true)
+    .order('id');
+
+  if (!photographers?.length) throw new Error('Nenhum fotógrafo ativo');
+
+  // 3. Verificar slots já ocupados no dia
+  const { data: existingSchedule } = await supabase
+    .from('daily_schedule')
+    .select('*')
+    .eq('schedule_date', targetDate);
+
+  const occupiedSlots = new Map<number, Set<number>>(); // photographer_id → Set<slot>
+  (existingSchedule || []).forEach(s => {
+    if (!occupiedSlots.has(s.photographer_id)) {
+      occupiedSlots.set(s.photographer_id, new Set());
+    }
+    occupiedSlots.get(s.photographer_id)!.add(s.slot);
+  });
+
+  // 4. Construir pontos para a matriz (base dos fotógrafos + pedidos)
+  const allPoints: Array<{ id: string; lat: number; lng: number; type: 'base' | 'order' }> = [];
+
+  // Adicionar bases dos fotógrafos
+  photographers.forEach(p => {
+    allPoints.push({
+      id: `base_${p.id}`,
+      lat: p.base_lat,
+      lng: p.base_lng,
+      type: 'base',
+    });
+  });
+
+  // Adicionar pedidos
+  pendingOrders.forEach(o => {
+    allPoints.push({
+      id: o.id,
+      lat: o.lat,
+      lng: o.lng,
+      type: 'order',
+    });
+  });
+
+  // 5. Calcular matriz de distâncias via OSRM
+  console.log(`Calculando matriz ${allPoints.length}x${allPoints.length}...`);
+  
+  const matrix = await buildDistanceMatrix(
+    allPoints.map(p => ({ lat: p.lat, lng: p.lng }))
+  );
+
+  // Fallback para Haversine se OSRM falhar
+  let getTime: (i: number, j: number) => number;
+  let getDist: (i: number, j: number) => number;
+
+  if (matrix) {
+    getTime = (i, j) => matrix.durations[i][j];
+    getDist = (i, j) => matrix.distances[i][j];
+  } else {
+    console.warn('OSRM falhou, usando Haversine com fator 1.4x');
+    getTime = (i, j) => {
+      const d = haversineDistance(allPoints[i], allPoints[j]);
+      return (d * 1.4) / (40 / 3.6); // ~40km/h velocidade urbana média
+    };
+    getDist = (i, j) => haversineDistance(allPoints[i], allPoints[j]) * 1.4;
+  }
+
+  // 6. Indexar posições na matriz
+  const pointIndex = new Map<string, number>();
+  allPoints.forEach((p, idx) => pointIndex.set(p.id, idx));
+
+  // 7. ALGORITMO NEAREST NEIGHBOR para cada fotógrafo
+
+  const assigned = new Set<string>();     // IDs dos pedidos já alocados
+  const schedules: PhotographerSchedule[] = [];
+
+  // Se balancear carga, intercalar fotógrafos na escolha
+  const orderedPhotographers = [...photographers];
+
+  for (const photographer of orderedPhotographers) {
+    const schedule: ScheduleSlot[] = [];
+    let currentSlot = 0;
+    let totalDistance = 0;
+    let ordersCount = 0;
+
+    // Posição atual = base do fotógrafo
+    let currentPointIndex = pointIndex.get(`base_${photographer.id}`)!;
+
+    // Slots já ocupados para este fotógrafo
+    const busySlots = occupiedSlots.get(photographer.id) || new Set();
+
+    // Inicializar todos os slots
+    for (let s = 0; s < TOTAL_SLOTS; s++) {
+      schedule.push({
+        slot: s,
+        time: `${String(8 + s).padStart(2, '0')}:00`,
+        order_id: null,
+        slot_type: busySlots.has(s) ? 'break' : 'available',
+      });
+    }
+
+    // Preencher slots disponíveis
+    while (currentSlot < TOTAL_SLOTS) {
+      // Pular slots ocupados
+      if (busySlots.has(currentSlot)) {
+        currentSlot++;
+        continue;
+      }
+
+      // Encontrar pedido mais próximo não atribuído
+      let bestOrder: Order | null = null;
+      let bestOrderIndex = -1;
+      let bestTravelTime = Infinity;
+      let bestDistance = Infinity;
+
+      for (const order of pendingOrders) {
+        if (assigned.has(order.id)) continue;
+
+        const orderIdx = pointIndex.get(order.id)!;
+        const travelTime = getTime(currentPointIndex, orderIdx);
+        const travelDist = getDist(currentPointIndex, orderIdx);
+
+        // Filtro de distância máxima
+        if (travelDist > maxDistanceKm * 1000) continue;
+
+        // Filtro de tempo de viagem máximo
+        const travelSlots = travelTime / SLOT_DURATION_SEC;
+        if (travelSlots > MAX_TRAVEL_SLOTS) continue;
+
+        // Verificar se cabe no dia (viagem + serviço)
+        const travelSlotsNeeded = travelTime > TRAVEL_THRESHOLD_SEC
+          ? Math.ceil(travelTime / SLOT_DURATION_SEC)
+          : 0;
+        const totalSlotsNeeded = travelSlotsNeeded + order.estimated_duration;
+
+        if (currentSlot + totalSlotsNeeded > TOTAL_SLOTS) continue;
+
+        // Score: combinar distância + prioridade
+        const score = prioritizeUrgent
+          ? travelTime * (order.priority / 5) // prioridade reduz score
+          : travelTime;
+
+        if (score < bestTravelTime) {
+          bestTravelTime = score;
+          bestOrder = order;
+          bestOrderIndex = orderIdx;
+          bestDistance = travelDist;
+        }
+      }
+
+      if (!bestOrder) break; // Nenhum pedido viável encontrado
+
+      // Calcular slots de viagem
+      const actualTravelTime = getTime(currentPointIndex, bestOrderIndex);
+      const travelSlotsNeeded = actualTravelTime > TRAVEL_THRESHOLD_SEC
+        ? Math.ceil(actualTravelTime / SLOT_DURATION_SEC)
+        : 0;
+
+      // Marcar slots de viagem
+      for (let t = 0; t < travelSlotsNeeded; t++) {
+        if (currentSlot < TOTAL_SLOTS) {
+          schedule[currentSlot] = {
+            ...schedule[currentSlot],
+            slot_type: 'travel',
+            order_id: bestOrder.id,
+            travel_minutes: Math.round(actualTravelTime / 60),
+          };
+          currentSlot++;
+        }
+      }
+
+      // Marcar slots de serviço
+      for (let d = 0; d < bestOrder.estimated_duration; d++) {
+        if (currentSlot < TOTAL_SLOTS) {
+          schedule[currentSlot] = {
+            ...schedule[currentSlot],
+            slot_type: 'service',
+            order_id: bestOrder.id,
+            order: bestOrder,
+          };
+          currentSlot++;
+        }
+      }
+
+      // Atualizar estado
+      assigned.add(bestOrder.id);
+      currentPointIndex = bestOrderIndex;
+      totalDistance += bestDistance;
+      ordersCount++;
+    }
+
+    schedules.push({
+      photographer,
+      slots: schedule,
+      total_orders: ordersCount,
+      total_distance_km: Math.round(totalDistance / 100) / 10,
+      efficiency_score: ordersCount > 0
+        ? Math.round((ordersCount / (totalDistance / 1000 + 1)) * 100) / 100
+        : 0,
+    });
+  }
+
+  // Se balancear carga, redistribuir (segunda passada)
+  if (balanceLoad && schedules.length > 1) {
+    rebalanceSchedules(schedules, pendingOrders, assigned, getTime, getDist, pointIndex);
+  }
+
+  // Pedidos não atribuídos
+  const unassigned = pendingOrders.filter(o => !assigned.has(o.id));
+
+  return {
+    date: targetDate,
+    schedules,
+    unassigned_orders: unassigned,
+    stats: {
+      total_orders: pendingOrders.length,
+      assigned_orders: assigned.size,
+      unassigned_count: unassigned.length,
+      avg_distance_km:
+        schedules.reduce((sum, s) => sum + s.total_distance_km, 0) / schedules.length,
+    },
+  };
+}
+
+// ----- BALANCEAMENTO DE CARGA -----
+
+function rebalanceSchedules(
+  schedules: PhotographerSchedule[],
+  orders: Order[],
+  assigned: Set<string>,
+  getTime: (i: number, j: number) => number,
+  getDist: (i: number, j: number) => number,
+  pointIndex: Map<string, number>
+) {
+  // Encontrar fotógrafo mais carregado e menos carregado
+  const sorted = [...schedules].sort((a, b) => a.total_orders - b.total_orders);
+  const minLoad = sorted[0].total_orders;
+  const maxLoad = sorted[sorted.length - 1].total_orders;
+
+  // Se diferença > 2, tentar redistribuir
+  if (maxLoad - minLoad <= 2) return;
+
+  console.log(`Rebalanceando: min=${minLoad}, max=${maxLoad}`);
+  // Implementação simplificada: mover último pedido do mais carregado
+  // para o menos carregado se estiver mais perto
+  // (implementação completa seria mais elaborada)
+}
+
+// ----- SALVAR AGENDA NO BANCO -----
+
+export async function saveScheduleToDatabase(
+  result: ScheduleResult
+): Promise<void> {
+  const { date, schedules } = result;
+
+  // Limpar agenda existente do dia
+  await supabase
+    .from('daily_schedule')
+    .delete()
+    .eq('schedule_date', date);
+
+  // Inserir nova agenda
+  const rows: any[] = [];
+
+  for (const sched of schedules) {
+    for (const slot of sched.slots) {
+      rows.push({
+        schedule_date: date,
+        photographer_id: sched.photographer.id,
+        slot: slot.slot,
+        order_id: slot.order_id,
+        slot_type: slot.slot_type,
+      });
+    }
+  }
+
+  if (rows.length > 0) {
+    const { error } = await supabase
+      .from('daily_schedule')
+      .insert(rows);
+    if (error) throw error;
+  }
+
+  // Atualizar status dos pedidos alocados
+  for (const sched of schedules) {
+    const orderIds = [
+      ...new Set(
+        sched.slots
+          .filter(s => s.slot_type === 'service' && s.order_id)
+          .map(s => s.order_id!)
+      ),
+    ];
+
+    for (const orderId of orderIds) {
+      const firstSlot = sched.slots.find(
+        s => s.order_id === orderId && s.slot_type === 'service'
+      );
+      
+      await supabase
+        .from('orders')
+        .update({
+          status: 'scheduled',
+          photographer_id: sched.photographer.id,
+          scheduled_date: date,
+          scheduled_slot: firstSlot?.slot,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', orderId);
+    }
+  }
+}
+```
+
+---
+
+## 4. API Routes (Vercel / Next.js)
+
+```typescript
+// app/api/orders/create/route.ts
+// ============================================
+// CRIAR PEDIDO + GEOCODING AUTOMÁTICO
+// ============================================
+
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+import { geocodeAddress } from '@/lib/geo-services';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { client_name, address, neighborhood, city, client_phone, notes, priority, estimated_duration } = body;
+
+    if (!client_name || !address) {
+      return NextResponse.json(
+        { error: 'client_name e address são obrigatórios' },
+        { status: 400 }
+      );
+    }
+
+    // 1. Geocoding do endereço
+    const fullAddress = [address, neighborhood, city || 'Curitiba']
+      .filter(Boolean)
+      .join(', ');
+
+    const geo = await geocodeAddress(fullAddress);
+
+    // 2. Inserir no banco
+    const { data: order, error } = await supabase
+      .from('orders')
+      .insert({
+        client_name,
+        client_phone,
+        address,
+        neighborhood,
+        city: city || 'Curitiba',
+        lat: geo?.lat || null,
+        lng: geo?.lng || null,
+        geocoded: !!geo,
+        notes,
+        priority: priority || 5,
+        estimated_duration: estimated_duration || 1,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    // 3. Calcular distâncias com pedidos pendentes próximos
+    if (geo) {
+      await updateDistancesForNewOrder(order);
+    }
+
+    return NextResponse.json({
+      success: true,
+      order,
+      geocoded: !!geo,
+      geocoding_result: geo,
+    });
+  } catch (error: any) {
+    console.error('Create order error:', error);
+    return NextResponse.json(
+      { error: error.message },
+      { status: 500 }
+    );
+  }
+}
+
+async function updateDistancesForNewOrder(newOrder: any) {
+  // Buscar pedidos pendentes que já têm coordenadas
+  const { data: existingOrders } = await supabase
+    .from('orders')
+    .select('id, lat, lng')
+    .eq('geocoded', true)
+    .eq('status', 'pending')
+    .neq('id', newOrder.id);
+
+  if (!existingOrders?.length) return;
+
+  // Calcular distância (Haversine rápido) para pré-filtrar
+  const { haversineDistance } = await import('@/lib/geo-services');
+  const nearby = existingOrders.filter(o => {
+    const dist = haversineDistance(
+      { lat: newOrder.lat, lng: newOrder.lng },
+      { lat: o.lat, lng: o.lng }
+    );
+    return dist < 25000; // 25km
+  });
+
+  if (!nearby.length) return;
+
+  // Calcular distâncias reais via OSRM para os próximos
+  const { getRouteDistance } = await import('@/lib/geo-services');
+
+  for (const existing of nearby) {
+    // Respeitar rate limit do Nominatim/OSRM público
+    await new Promise(r => setTimeout(r, 100));
+
+    const result = await getRouteDistance(
+      { lat: newOrder.lat, lng: newOrder.lng },
+      { lat: existing.lat, lng: existing.lng }
+    );
+
+    if (result) {
+      await supabase.from('distance_matrix').upsert([
+        {
+          origin_id: newOrder.id,
+          destination_id: existing.id,
+          distance_meters: result.distance_meters,
+          duration_seconds: result.duration_seconds,
+          duration_slots: result.duration_slots,
+        },
+        {
+          origin_id: existing.id,
+          destination_id: newOrder.id,
+          distance_meters: result.distance_meters,
+          duration_seconds: result.duration_seconds,
+          duration_slots: result.duration_slots,
+        },
+      ]);
+    }
+  }
+}
+```
+
+```typescript
+// app/api/schedule/generate/route.ts
+// ============================================
+// GERAR AGENDA DO DIA
+// ============================================
+
+import { NextRequest, NextResponse } from 'next/server';
+import { generateDailySchedule, saveScheduleToDatabase } from '@/lib/scheduler';
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { date, maxDistanceKm, autoSave } = body;
+
+    if (!date) {
+      return NextResponse.json(
+        { error: 'date é obrigatório (YYYY-MM-DD)' },
+        { status: 400 }
+      );
+    }
+
+    // Gerar agenda otimizada
+    const result = await generateDailySchedule(date, {
+      maxDistanceKm: maxDistanceKm || 20,
+      prioritizeUrgent: true,
+      balanceLoad: true,
+    });
+
+    // Salvar automaticamente se solicitado
+    if (autoSave && result.stats.assigned_orders > 0) {
+      await saveScheduleToDatabase(result);
+    }
+
+    return NextResponse.json({
+      success: true,
+      ...result,
+    });
+  } catch (error: any) {
+    console.error('Schedule error:', error);
+    return NextResponse.json(
+      { error: error.message },
+      { status: 500 }
+    );
+  }
+}
+```
+
+```typescript
+// app/api/schedule/view/route.ts
+// ============================================
+// VISUALIZAR AGENDA DO DIA
+// ============================================
+
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const date = searchParams.get('date') || new Date().toISOString().split('T')[0];
+  const photographerId = searchParams.get('photographer_id');
+
+  let query = supabase
+    .from('v_daily_agenda')
+    .select('*')
+    .eq('schedule_date', date)
+    .order('photographer_id')
+    .order('slot');
+
+  if (photographerId) {
+    query = query.eq('photographer_id', parseInt(photographerId));
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  // Agrupar por fotógrafo
+  const byPhotographer: Record<string, any[]> = {};
+  (data || []).forEach(row => {
+    const key = row.photographer_name;
+    if (!byPhotographer[key]) byPhotographer[key] = [];
+    byPhotographer[key].push(row);
+  });
+
+  return NextResponse.json({
+    date,
+    agendas: byPhotographer,
+    total_slots_filled: (data || []).filter(d => d.slot_type === 'service').length,
+  });
+}
+```
+
+```typescript
+// app/api/orders/nearby/route.ts
+// ============================================
+// BUSCAR PEDIDOS PRÓXIMOS (para o filtro visual)
+// ============================================
+
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const orderId = searchParams.get('order_id');
+  const maxKm = parseFloat(searchParams.get('max_km') || '10');
+  const limit = parseInt(searchParams.get('limit') || '20');
+
+  if (!orderId) {
+    return NextResponse.json({ error: 'order_id é obrigatório' }, { status: 400 });
+  }
+
+  // Buscar pedidos próximos usando a distance_matrix
+  const { data, error } = await supabase
+    .from('distance_matrix')
+    .select(`
+      destination_id,
+      distance_meters,
+      duration_seconds,
+      duration_slots,
+      destination:orders!distance_matrix_destination_id_fkey (
+        id, client_name, address, neighborhood, lat, lng, status, priority
+      )
+    `)
+    .eq('origin_id', orderId)
+    .lte('distance_meters', maxKm * 1000)
+    .order('distance_meters', { ascending: true })
+    .limit(limit);
+
+  if (error) {
+    // Fallback: usar cálculo geográfico do PostGIS/Supabase
+    const { data: order } = await supabase
+      .from('orders')
+      .select('lat, lng')
+      .eq('id', orderId)
+      .single();
+
+    if (!order) {
+      return NextResponse.json({ error: 'Pedido não encontrado' }, { status: 404 });
+    }
+
+    // Query com distância calculada
+    const { data: nearby } = await supabase.rpc('find_nearby_orders', {
+      ref_lat: order.lat,
+      ref_lng: order.lng,
+      max_distance_km: maxKm,
+      exclude_id: orderId,
+    });
+
+    return NextResponse.json({ nearby: nearby || [] });
+  }
+
+  return NextResponse.json({
+    reference_order_id: orderId,
+    max_distance_km: maxKm,
+    nearby: data?.map(d => ({
+      ...d.destination,
+      distance_km: Math.round(d.distance_meters / 100) / 10,
+      travel_minutes: Math.round(d.duration_seconds / 60),
+      travel_slots: d.duration_slots,
+    })) || [],
+  });
+}
+```
+
+Função auxiliar no Supabase para busca por proximidade:
+
+```sql
+-- Função RPC para buscar pedidos próximos sem cache de distância
+CREATE OR REPLACE FUNCTION find_nearby_orders(
+  ref_lat DOUBLE PRECISION,
+  ref_lng DOUBLE PRECISION,
+  max_distance_km DOUBLE PRECISION DEFAULT 10,
+  exclude_id UUID DEFAULT NULL
+)
+RETURNS TABLE (
+  id UUID,
+  client_name TEXT,
+  address TEXT,
+  neighborhood TEXT,
+  lat DOUBLE PRECISION,
+  lng DOUBLE PRECISION,
+  status TEXT,
+  priority INTEGER,
+  distance_km NUMERIC
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    o.id,
+    o.client_name,
+    o.address,
+    o.neighborhood,
+    o.lat,
+    o.lng,
+    o.status,
+    o.priority,
+    ROUND(
+      (6371 * ACOS(
+        COS(RADIANS(ref_lat)) * COS(RADIANS(o.lat)) *
+        COS(RADIANS(o.lng) - RADIANS(ref_lng)) +
+        SIN(RADIANS(ref_lat)) * SIN(RADIANS(o.lat))
+      ))::NUMERIC, 2
+    ) AS distance_km
+  FROM orders o
+  WHERE o.geocoded = TRUE
+    AND o.id != COALESCE(exclude_id, '00000000-0000-0000-0000-000000000000'::UUID)
+    AND (6371 * ACOS(
+      COS(RADIANS(ref_lat)) * COS(RADIANS(o.lat)) *
+      COS(RADIANS(o.lng) - RADIANS(ref_lng)) +
+      SIN(RADIANS(ref_lat)) * SIN(RADIANS(o.lat))
+    )) <= max_distance_km
+  ORDER BY distance_km;
+END;
+$$ LANGUAGE plpgsql STABLE;
+```
+
+---
+
+## 5. Integração com Tadabase (Webhook)
+
+```typescript
+// app/api/webhook/tadabase/route.ts
+// ============================================
+// WEBHOOK: Tadabase envia pedido → sistema processa
+// ============================================
+
+import { NextRequest, NextResponse } from 'next/server';
+
+export async function POST(req: NextRequest) {
+  try {
+    // Validar secret
+    const secret = req.headers.get('x-webhook-secret');
+    if (secret !== process.env.TADABASE_WEBHOOK_SECRET) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const body = await req.json();
+
+    // Mapear campos do Tadabase → nosso sistema
+    const orderData = {
+      client_name: body.field_name || body.cliente_nome,
+      client_phone: body.field_phone || body.cliente_telefone,
+      address: body.field_address || body.endereco,
+      neighborhood: body.field_neighborhood || body.bairro,
+      city: body.field_city || body.cidade || 'Curitiba',
+      notes: body.field_notes || body.observacoes,
+      external_id: body.record_id, // ID do Tadabase
+      priority: parseInt(body.field_priority || '5'),
+      estimated_duration: parseInt(body.field_duration || '1'),
+    };
+
+    // Chamar nosso endpoint de criação
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const res = await fetch(`${baseUrl}/api/orders/create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(orderData),
+    });
+
+    const result = await res.json();
+
+    return NextResponse.json({
+      success: true,
+      order_id: result.order?.id,
+      geocoded: result.geocoded,
+    });
+  } catch (error: any) {
+    console.error('Webhook error:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+```
+
+---
+
+## 6. Visualização da Agenda (Componente React)
+
+```tsx
+// components/ScheduleGrid.tsx
+'use client';
+
+import { useState, useEffect } from 'react';
+
+interface SlotData {
+  slot: number;
+  horario: string;
+  slot_type: string;
+  client_name?: string;
+  address?: string;
+  neighborhood?: string;
+}
+
+interface AgendaData {
+  [photographer: string]: SlotData[];
+}
+
+const SLOT_COLORS = {
+  service: 'bg-green-100 border-green-400 text-green-800',
+  travel: 'bg-yellow-100 border-yellow-400 text-yellow-700',
+  break: 'bg-gray-200 border-gray-400 text-gray-500',
+  available: 'bg-white border-gray-200 text-gray-400',
+};
+
+export default function ScheduleGrid() {
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [agendas, setAgendas] = useState<AgendaData>({});
+  const [loading, setLoading] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [stats, setStats] = useState<any>(null);
+
+  const loadSchedule = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/schedule/view?date=${date}`);
+      const data = await res.json();
+      setAgendas(data.agendas || {});
+    } catch (err) {
+      console.error(err);
+    }
+    setLoading(false);
+  };
+
+  const generateSchedule = async () => {
+    setGenerating(true);
+    try {
+      const res = await fetch('/api/schedule/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, autoSave: true, maxDistanceKm: 20 }),
+      });
+      const data = await res.json();
+      setStats(data.stats);
+      await loadSchedule(); // Recarregar
+    } catch (err) {
+      console.error(err);
+    }
+    setGenerating(false);
+  };
+
+  useEffect(() => {
+    loadSchedule();
+  }, [date]);
+
+  const slots = Array.from({ length: 10 }, (_, i) => ({
+    num: i,
+    time: `${String(8 + i).padStart(2, '0')}:00`,
+  }));
+
+  const photographers = Object.keys(agendas);
+
+  return (
+    <div className="p-6 max-w-7xl mx-auto">
+      <div className="flex items-center gap-4 mb-6">
+        <h1 className="text-2xl font-bold">📸 Agenda Fotógrafos</h1>
+        <input
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+          className="border rounded px-3 py-2"
+        />
+        <button
+          onClick={generateSchedule}
+          disabled={generating}
+          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 
+                     disabled:opacity-50 flex items-center gap-2"
+        >
+          {generating ? '⏳ Gerando...' : '🗓️ Gerar Agenda Otimizada'}
+        </button>
+      </div>
+
+      {stats && (
+        <div className="bg-blue-50 border border-blue-200 rounded p-4 mb-4 flex gap-6">
+          <span>📦 Total: <b>{stats.total_orders}</b></span>
+          <span>✅ Alocados: <b>{stats.assigned_orders}</b></span>
+          <span>❌ Pendentes: <b>{stats.unassigned_count}</b></span>
+          <span>📏 Dist. Média: <b>{stats.avg_distance_km} km</b></span>
+        </div>
+      )}
+
+      {/* Legenda */}
+      <div className="flex gap-4 mb-4 text-sm">
+        {Object.entries(SLOT_COLORS).map(([type, cls]) => (
+          <div key={type} className="flex items-center gap-1">
+            <div className={`w-4 h-4 rounded border ${cls}`} />
+            <span className="capitalize">{type === 'service' ? 'Serviço' : 
+              type === 'travel' ? 'Deslocamento' : 
+              type === 'break' ? 'Indisponível' : 'Livre'}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Grid da Agenda */}
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr>
+              <th className="border p-2 bg-gray-50 w-20">Horário</th>
+              {photographers.map((name) => (
+                <th key={name} className="border p-2 bg-gray-50 min-w-[200px]">
+                  📷 {name}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {slots.map((slot) => (
+              <tr key={slot.num}>
+                <td className="border p-2 text-center font-mono font-bold bg-gray-50">
+                  {slot.time}
+                </td>
+                {photographers.map((name) => {
+                  const slotData = agendas[name]?.find(
+                    (s) => s.slot === slot.num
+                  );
+                  const colorClass =
+                    SLOT_COLORS[slotData?.slot_type as keyof typeof SLOT_COLORS] ||
+                    SLOT_COLORS.available;
+
+                  return (
+                    <td
+                      key={`${name}-${slot.num}`}
+                      className={`border p-2 ${colorClass} transition-colors cursor-pointer
+                                  hover:opacity-80`}
+                      title={slotData?.address || ''}
+                    >
+                      {slotData?.slot_type === 'service' && (
+                        <div>
+                          <div className="font-semibold text-sm">
+                            {slotData.client_name}
+                          </div>
+                          <div className="text-xs opacity-75">
+                            {slotData.neighborhood || slotData.address}
+                          </div>
+                        </div>
+                      )}
+                      {slotData?.slot_type === 'travel' && (
+                        <div className="text-xs italic">🚗 Deslocamento</div>
+                      )}
+                      {slotData?.slot_type === 'available' && (
+                        <div className="text-xs">Livre</div>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+```
+
+---
+
+## Resumo do Fluxo
+
+```
+PEDIDO NOVO (Tadabase ou direto)
+       │
+       ▼
+  ┌─────────────────┐
+  │  Webhook/API     │
+  │  POST /orders    │
+  └────────┬────────┘
+           │
+           ▼
+  ┌─────────────────┐
+  │  Geocoding       │  ← Nominatim (OSM, grátis)
+  │  Endereço → GPS  │
+  └────────┬────────┘
+           │
+           ▼
+  ┌─────────────────┐
+  │  Dist. Matrix    │  ← OSRM Table API (OSM, grátis)
+  │  Cache Supabase  │     Calcula NxN de uma vez
+  └────────┬────────┘
+           │
+           ▼
+  ┌─────────────────────────────────┐
+  │  Gerar Agenda (sob demanda)     │
+  │                                 │
+  │  Para cada fotógrafo (1-5):     │
+  │    1. Começar da base           │
+  │    2. Encontrar pedido + perto  │
+  │    3. Alocar slot (viagem+job)  │
+  │    4. Repetir até preencher     │
+  │                                 │
+  │  Nearest Neighbor = simples     │
+  │  e eficaz (~85% do ótimo)       │
+  └────────┬────────────────────────┘
+           │
+           ▼
+  ┌─────────────────┐
+  │  Agenda Visual   │  ← Grid 5 colunas × 10 slots
+  │  (React)         │     Verde=serviço, Amarelo=viagem
+  └─────────────────┘
+```
+
+**Pontos-chave da solução:**
+
+| Aspecto | Escolha | Motivo |
+|---|---|---|
+| Geocoding | Nominatim (OSM) | Gratuito, boa cobertura BR |
+| Matriz de distância | OSRM Table API | Uma chamada calcula NxN, gratuito |
+| Algoritmo | Nearest Neighbor Greedy | Simples, sem OR-Tools, ~85% eficiência |
+| Fallback de distância | Haversine × 1.4 | Se OSRM cair, cálculo local instantâneo |
+| Cache | `distance_matrix` table | Evita recalcular pares já conhecidos |
+| Rate limiting | 100ms entre chamadas | Respeitar API pública do OSRM/Nominatim |
+
+
+
+-----------------------------
+
+EXPLICADO QUE NAO TEMOS O INCOMING WEBHOOK
+A REPOSTA FOI:
+
+
+
+# Integração Tadabase ↔ Vercel/Supabase
+
+Boa notícia: **outgoing webhook é exatamente o que precisamos!**
+
+```
+┌─────────────────────────────────────────────────────┐
+│                    FLUXO                            │
+│                                                     │
+│  TADABASE                         VERCEL/SUPABASE   │
+│  ┌──────────┐   Outgoing Webhook  ┌──────────────┐  │
+│  │ Novo     │ ──────────────────▶ │ /api/webhook │  │
+│  │ Pedido   │   (envia dados)     │ (recebe)     │  │
+│  └──────────┘                     └──────┬───────┘  │
+│                                          │          │
+│  ┌──────────┐   Tadabase REST API ┌──────▼───────┐  │
+│  │ Registro │ ◀──────────────────│ Atualiza     │  │
+│  │ Atualiz. │   (escreve volta)   │ resultado    │  │
+│  └──────────┘                     └──────────────┘  │
+│                                                     │
+│  Outgoing = Tadabase ENVIA para fora ✅             │
+│  Incoming = Tadabase RECEBE de fora  ❌ (inativo)   │
+│  API = Nós LEMOS/ESCREVEMOS no Tadabase ✅          │
+└─────────────────────────────────────────────────────┘
+```
+
+---
+
+## 1. Configurar Outgoing Webhook no Tadabase
+
+No Tadabase, na tabela de Pedidos:
+
+```
+Trigger: Quando um novo registro é criado
+Método: POST
+URL: https://seu-app.vercel.app/api/webhook/tadabase
+Headers:
+  Content-Type: application/json
+  x-webhook-secret: SUA_CHAVE_SECRETA_AQUI
+
+Body (mapear os campos da tabela):
+{
+  "record_id": "{field_id}",
+  "cliente_nome": "{field_nome_cliente}",
+  "cliente_telefone": "{field_telefone}",
+  "endereco": "{field_endereco}",
+  "bairro": "{field_bairro}",
+  "cidade": "{field_cidade}",
+  "observacoes": "{field_observacoes}",
+  "prioridade": "{field_prioridade}",
+  "duracao_estimada": "{field_duracao}"
+}
+```
+
+---
+
+## 2. API Route que Recebe o Webhook
+
+```typescript
+// app/api/webhook/tadabase/route.ts
+
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+import { geocodeAddress } from '@/lib/geo-services';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+export async function POST(req: NextRequest) {
+  try {
+    // 1. Validar secret
+    const secret = req.headers.get('x-webhook-secret');
+    if (secret !== process.env.TADABASE_WEBHOOK_SECRET) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // 2. Receber dados do Tadabase (outgoing webhook)
+    const body = await req.json();
+    console.log('📥 Webhook Tadabase recebido:', body.record_id);
+
+    // 3. Geocoding do endereço
+    const fullAddress = [body.endereco, body.bairro, body.cidade || 'Curitiba']
+      .filter(Boolean)
+      .join(', ');
+
+    const geo = await geocodeAddress(fullAddress);
+
+    // 4. Salvar no Supabase
+    const { data: order, error } = await supabase
+      .from('orders')
+      .insert({
+        external_id: body.record_id,       // ID do Tadabase
+        client_name: body.cliente_nome,
+        client_phone: body.cliente_telefone,
+        address: body.endereco,
+        neighborhood: body.bairro,
+        city: body.cidade || 'Curitiba',
+        notes: body.observacoes,
+        priority: parseInt(body.prioridade || '5'),
+        estimated_duration: parseInt(body.duracao_estimada || '1'),
+        lat: geo?.lat || null,
+        lng: geo?.lng || null,
+        geocoded: !!geo,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    // 5. Atualizar o registro NO TADABASE via API
+    //    (informar que foi recebido + coordenadas)
+    if (body.record_id) {
+      await updateTadabaseRecord(body.record_id, {
+        status_integracao: 'Recebido',
+        latitude: geo?.lat?.toString() || '',
+        longitude: geo?.lng?.toString() || '',
+        geocodificado: geo ? 'Sim' : 'Falha',
+        supabase_id: order.id,
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      order_id: order.id,
+      geocoded: !!geo,
+    });
+
+  } catch (error: any) {
+    console.error('❌ Webhook error:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+```
+
+---
+
+## 3. Comunicação de Volta: Vercel → Tadabase (via API)
+
+```typescript
+// lib/tadabase-api.ts
+// ============================================
+// CLIENTE PARA A API DO TADABASE
+// Para escrever de volta os resultados
+// ============================================
+
+const TADABASE_APP_ID = process.env.TADABASE_APP_ID!;
+const TADABASE_API_KEY = process.env.TADABASE_API_KEY!;
+const TADABASE_BASE_URL = `https://api.tadabase.io/api/v1/data-tables`;
+
+// ID da tabela de pedidos no Tadabase
+const PEDIDOS_TABLE_ID = process.env.TADABASE_PEDIDOS_TABLE_ID!;
+
+interface TadabaseUpdateFields {
+  [fieldSlug: string]: string;
+}
+
+// ----- ATUALIZAR REGISTRO NO TADABASE -----
+export async function updateTadabaseRecord(
+  recordId: string,
+  fields: TadabaseUpdateFields
+): Promise<boolean> {
+  try {
+    const url = `${TADABASE_BASE_URL}/${PEDIDOS_TABLE_ID}/records/${recordId}`;
+
+    const res = await fetch(url, {
+      method: 'POST', // Tadabase usa POST para update
+      headers: {
+        'X-Tadabase-App-id': TADABASE_APP_ID,
+        'X-Tadabase-App-Key': TADABASE_API_KEY,
+        'X-Tadabase-App-Secret': process.env.TADABASE_API_SECRET!,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(fields),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      console.error('Tadabase API error:', err);
+      return false;
+    }
+
+    console.log(`✅ Tadabase record ${recordId} atualizado`);
+    return true;
+  } catch (error) {
+    console.error('Tadabase update error:', error);
+    return false;
+  }
+}
+
+// ----- BUSCAR REGISTRO DO TADABASE -----
+export async function getTadabaseRecord(recordId: string) {
+  try {
+    const url = `${TADABASE_BASE_URL}/${PEDIDOS_TABLE_ID}/records/${recordId}`;
+
+    const res = await fetch(url, {
+      headers: {
+        'X-Tadabase-App-id': TADABASE_APP_ID,
+        'X-Tadabase-App-Key': TADABASE_API_KEY,
+        'X-Tadabase-App-Secret': process.env.TADABASE_API_SECRET!,
+      },
+    });
+
+    return await res.json();
+  } catch (error) {
+    console.error('Tadabase fetch error:', error);
+    return null;
+  }
+}
+
+// ----- BUSCAR TODOS OS REGISTROS (paginado) -----
+export async function getAllTadabaseRecords(
+  filters?: Record<string, string>
+) {
+  try {
+    let url = `${TADABASE_BASE_URL}/${PEDIDOS_TABLE_ID}/records`;
+    
+    if (filters) {
+      const params = new URLSearchParams(filters);
+      url += `?${params.toString()}`;
+    }
+
+    const res = await fetch(url, {
+      headers: {
+        'X-Tadabase-App-id': TADABASE_APP_ID,
+        'X-Tadabase-App-Key': TADABASE_API_KEY,
+        'X-Tadabase-App-Secret': process.env.TADABASE_API_SECRET!,
+      },
+    });
+
+    return await res.json();
+  } catch (error) {
+    console.error('Tadabase fetch all error:', error);
+    return null;
+  }
+}
+```
+
+---
+
+## 4. Após Gerar Agenda → Devolver para Tadabase
+
+```typescript
+// lib/sync-to-tadabase.ts
+// ============================================
+// Após gerar agenda, atualizar Tadabase com resultados
+// ============================================
+
+import { updateTadabaseRecord } from './tadabase-api';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+export async function syncScheduleToTadabase(scheduleDate: string) {
+  // Buscar pedidos agendados no dia que vieram do Tadabase
+  const { data: scheduledOrders } = await supabase
+    .from('orders')
+    .select(`
+      id,
+      external_id,
+      photographer_id,
+      scheduled_date,
+      scheduled_slot,
+      photographers (name)
+    `)
+    .eq('scheduled_date', scheduleDate)
+    .eq('status', 'scheduled')
+    .not('external_id', 'is', null);  // só os que vieram do Tadabase
+
+  if (!scheduledOrders?.length) {
+    console.log('Nenhum pedido do Tadabase para sincronizar');
+    return;
+  }
+
+  const slotToTime = (slot: number) => 
+    `${String(8 + slot).padStart(2, '0')}:00`;
+
+  let successCount = 0;
+
+  for (const order of scheduledOrders) {
+    // Mapear campos → slugs do Tadabase
+    // (ajustar conforme seus nomes de campo no Tadabase)
+    const success = await updateTadabaseRecord(order.external_id, {
+      // Slugs dos campos no Tadabase:
+      field_status: 'Agendado',
+      field_fotografo: (order as any).photographers?.name || '',
+      field_data_agendamento: order.scheduled_date,
+      field_horario: slotToTime(order.scheduled_slot),
+      field_slot: String(order.scheduled_slot),
+    });
+
+    if (success) successCount++;
+
+    // Rate limit: Tadabase API tem limites
+    await new Promise(r => setTimeout(r, 200));
+  }
+
+  console.log(
+    `📤 Sincronizado ${successCount}/${scheduledOrders.length} para Tadabase`
+  );
+
+  return { total: scheduledOrders.length, synced: successCount };
+}
+```
+
+---
+
+## 5. Rota que Gera Agenda + Sincroniza
+
+```typescript
+// app/api/schedule/generate/route.ts (atualizado)
+
+import { NextRequest, NextResponse } from 'next/server';
+import { generateDailySchedule, saveScheduleToDatabase } from '@/lib/scheduler';
+import { syncScheduleToTadabase } from '@/lib/sync-to-tadabase';
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { date, maxDistanceKm, autoSave, syncTadabase } = body;
+
+    if (!date) {
+      return NextResponse.json(
+        { error: 'date é obrigatório (YYYY-MM-DD)' },
+        { status: 400 }
+      );
+    }
+
+    // 1. Gerar agenda otimizada
+    const result = await generateDailySchedule(date, {
+      maxDistanceKm: maxDistanceKm || 20,
+    });
+
+    // 2. Salvar no Supabase
+    if (autoSave !== false && result.stats.assigned_orders > 0) {
+      await saveScheduleToDatabase(result);
+    }
+
+    // 3. Sincronizar de volta para Tadabase
+    let syncResult = null;
+    if (syncTadabase !== false && result.stats.assigned_orders > 0) {
+      syncResult = await syncScheduleToTadabase(date);
+    }
+
+    return NextResponse.json({
+      success: true,
+      ...result,
+      tadabase_sync: syncResult,
+    });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+```
+
+---
+
+## 6. Importação Inicial (Puxar dados existentes do Tadabase)
+
+```typescript
+// app/api/sync/import-from-tadabase/route.ts
+// ============================================
+// Importar pedidos existentes do Tadabase → Supabase
+// (rodar uma vez, ou periodicamente)
+// ============================================
+
+import { NextRequest, NextResponse } from 'next/server';
+import { getAllTadabaseRecords } from '@/lib/tadabase-api';
+import { geocodeAddress } from '@/lib/geo-services';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+export async function POST(req: NextRequest) {
+  try {
+    // 1. Buscar todos os registros do Tadabase
+    const tadabaseData = await getAllTadabaseRecords({
+      // filtrar por status se necessário
+      // 'filters[field_status]': 'Pendente'
+    });
+
+    if (!tadabaseData?.items?.length) {
+      return NextResponse.json({ message: 'Nenhum registro encontrado' });
+    }
+
+    let imported = 0;
+    let skipped = 0;
+    let errors = 0;
+
+    for (const record of tadabaseData.items) {
+      // Verificar se já existe
+      const { data: existing } = await supabase
+        .from('orders')
+        .select('id')
+        .eq('external_id', record.id)
+        .single();
+
+      if (existing) {
+        skipped++;
+        continue;
+      }
+
+      // Geocoding
+      const address = [
+        record.field_endereco,
+        record.field_bairro,
+        record.field_cidade || 'Curitiba',
+      ].filter(Boolean).join(', ');
+
+      const geo = await geocodeAddress(address);
+      
+      // Respeitar rate limit Nominatim (1 req/sec)
+      await new Promise(r => setTimeout(r, 1100));
+
+      // Inserir
+      const { error } = await supabase.from('orders').insert({
+        external_id: record.id,
+        client_name: record.field_nome_cliente,
+        client_phone: record.field_telefone,
+        address: record.field_endereco,
+        neighborhood: record.field_bairro,
+        city: record.field_cidade || 'Curitiba',
+        lat: geo?.lat,
+        lng: geo?.lng,
+        geocoded: !!geo,
+        priority: parseInt(record.field_prioridade || '5'),
+        estimated_duration: parseInt(record.field_duracao || '1'),
+      });
+
+      if (error) {
+        errors++;
+        console.error(`Erro importando ${record.id}:`, error);
+      } else {
+        imported++;
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      total: tadabaseData.items.length,
+      imported,
+      skipped,
+      errors,
+    });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+```
+
+---
+
+## 7. Variáveis de Ambiente (.env.local)
+
+```bash
+# Supabase
+NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+SUPABASE_SERVICE_ROLE_KEY=eyJ...
+
+# Tadabase API
+TADABASE_APP_ID=seu_app_id
+TADABASE_API_KEY=sua_api_key
+TADABASE_API_SECRET=seu_api_secret
+TADABASE_PEDIDOS_TABLE_ID=id_da_tabela_pedidos
+
+# Webhook Secret (criar uma string aleatória)
+TADABASE_WEBHOOK_SECRET=minha-chave-secreta-abc123
+
+# App
+NEXT_PUBLIC_APP_URL=https://seu-app.vercel.app
+```
+
+---
+
+## Resumo do Fluxo Completo
+
+```
+ ┌──────────────────────────────────────────────────────┐
+ │                                                      │
+ │  TADABASE                                            │
+ │  ┌─────────────────────┐                             │
+ │  │ Novo Pedido criado  │                             │
+ │  └─────────┬───────────┘                             │
+ │            │                                         │
+ │            │ Outgoing Webhook (POST) ✅               │
+ │            ▼                                         │
+ │  ┌─────────────────────────────────┐                 │
+ │  │ Vercel API                      │                 │
+ │  │ /api/webhook/tadabase           │                 │
+ │  │                                 │                 │
+ │  │  1. Recebe dados               │                 │
+ │  │  2. Geocoding (Nominatim)      │                 │
+ │  │  3. Salva no Supabase          │                 │
+ │  │  4. Atualiza Tadabase (API) ──────▶ Tadabase     │
+ │  └─────────────────────────────────┘   (campo       │
+ │                                         status =    │
+ │  Operador clica "Gerar Agenda"          "Recebido") │
+ │            │                                         │
+ │            ▼                                         │
+ │  ┌─────────────────────────────────┐                 │
+ │  │ /api/schedule/generate          │                 │
+ │  │                                 │                 │
+ │  │  1. OSRM matriz distâncias     │                 │
+ │  │  2. Nearest Neighbor            │                 │
+ │  │  3. Salva agenda Supabase      │                 │
+ │  │  4. Sincroniza Tadabase (API)──────▶ Tadabase    │
+ │  └─────────────────────────────────┘   (campos:     │
+ │                                         fotógrafo,  │
+ │                                         data, hora) │
+ └──────────────────────────────────────────────────────┘
+```
+
+| Direção | Mecanismo | Status |
+|---|---|---|
+| Tadabase → Vercel | **Outgoing Webhook** | ✅ Disponível |
+| Vercel → Tadabase | **Tadabase REST API** | ✅ Disponível |
+| Tadabase ← Webhook | Incoming Webhook | ❌ Inativo (não precisamos) |

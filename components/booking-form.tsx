@@ -336,7 +336,9 @@ function BookingForm({ companyName }: BookingFormProps) {
     const servicesString = servicesToUse.join(',');
 
     try {
-      const response = await fetch(`/api/availability?date=${dateString}&services=${servicesString}`);
+      // Include neighborhood in the request to filter photographers
+      const neighborhoodParam = neighborhood ? `&neighborhood=${encodeURIComponent(neighborhood)}` : '';
+      const response = await fetch(`/api/availability?date=${dateString}&services=${servicesString}${neighborhoodParam}`);
       const data = await response.json();
 
       if (!response.ok) {

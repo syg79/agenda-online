@@ -53,6 +53,7 @@ model Photographer {
   email     String   @unique
   active    Boolean  @default(true)
   services  String[] // ["photo", "video", "drone"]
+  neighborhoods String[] // List of neighborhoods covered (e.g. ["Batel", "Centro"])
   bookings  Booking[]
   timeBlocks TimeBlock[]
   regions   PhotographerRegion[]
