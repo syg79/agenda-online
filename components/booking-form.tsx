@@ -257,13 +257,13 @@ function BookingForm({ companyName }: BookingFormProps) {
       if (serviceId === 'drone_photo_video') {
         // If Combo selected, remove standalone Drone Photo and Drone Video
         if (newServices.includes('drone_photo') || newServices.includes('drone_video')) {
-          showToast("Maravilha! O 'Drone Combo' já inclui todas as fotos e vídeos aéreos. ✨ Ajustamos sua seleção para evitar duplicidade.");
+          showToast("A opção ‘Drone: Fotos + Vídeo’ já inclui as fotos aéreas. Para evitar duplicidade, desmarcamos automaticamente ‘Drone: Fotos’.");
           newServices = newServices.filter(id => id !== 'drone_photo' && id !== 'drone_video');
         }
       } else if (serviceId === 'drone_photo' || serviceId === 'drone_video') {
         // If standalone Drone Photo or Drone Video selected, remove Combo
         if (newServices.includes('drone_photo_video')) {
-          showToast("Como você escolheu um serviço de Drone específico, desmarcamos o Combo para não gerar cobrança extra! 👍");
+          showToast("A opção ‘Drone: Fotos’ inclui apenas imagens aéreas. Por isso o item ‘Drone: Fotos + Vídeo’ foi desmarcada automaticamente.");
           newServices = newServices.filter(id => id !== 'drone_photo_video');
         }
       }
