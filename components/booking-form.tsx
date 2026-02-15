@@ -606,7 +606,7 @@ function BookingForm({ companyName }: BookingFormProps) {
                     <span className="font-medium text-slate-800 shrink-0">Local:</span>
                     <span className="truncate">{address} {complement ? `- ${complement}` : ''}</span>
                   </div>
-                  <button onClick={() => setStep(1)} className="text-blue-600 hover:underline text-xs shrink-0 font-medium whitespace-nowrap">Alterar</button>
+                  {/* <button onClick={() => setStep(1)} className="text-blue-600 hover:underline text-xs shrink-0 font-medium whitespace-nowrap">Alterar</button> */}
                 </div>
 
                 {/* Line 2: Date/Time (If selected) */}
@@ -1090,30 +1090,7 @@ function BookingForm({ companyName }: BookingFormProps) {
                   )}
                 </div>
 
-                {/* Serviços */}
-                <div className="border-t border-slate-100 pt-5">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Serviços</p>
-                  {selectedServices.length > 0 ? (
-                    <ul className="space-y-3">
-                      {selectedServices.map(id => {
-                        const s = services.find(x => x.id === id);
-                        const Icon = s?.icon || Camera;
-                        return (
-                          <li key={id} className="flex items-center gap-3">
-                            <div className="w-6 h-6 rounded-md bg-blue-50 flex items-center justify-center shrink-0">
-                              <Icon className="w-3.5 h-3.5 text-blue-600" />
-                            </div>
-                            <span className="text-sm font-medium text-slate-700">{s?.name}</span>
-                          </li>
-                        )
-                      })}
-                    </ul>
-                  ) : (
-                    <p className="text-sm text-slate-400 italic">Nenhum selecionado</p>
-                  )}
-                </div>
-
-                {/* Agendamento */}
+                {/* Agendamento (Now 2nd) */}
                 <div className="border-t border-slate-100 pt-5">
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Agendamento</p>
                   {selectedDate ? (
@@ -1136,19 +1113,30 @@ function BookingForm({ companyName }: BookingFormProps) {
                   )}
                 </div>
 
-                {/* TotaLs */}
-                <div className="bg-slate-50 -mx-6 -mb-6 p-6 border-t border-slate-100 mt-2">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-sm text-slate-500">Duração estimada</span>
-                    <span className="font-semibold text-slate-800 flex items-center gap-1"><Clock className="w-3.5 h-3.5" />{getTotalDuration()} min</span>
-                  </div>
-                  {showPrices && (
-                    <div className="flex justify-between items-center pt-2 border-t border-slate-200 mt-2">
-                      <span className="text-base font-bold text-slate-700">Total</span>
-                      <span className="text-xl font-bold text-blue-600">R$ {getTotalPrice()},00</span>
-                    </div>
+                {/* Serviços (Now 3rd) */}
+                <div className="border-t border-slate-100 pt-5">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Serviços</p>
+                  {selectedServices.length > 0 ? (
+                    <ul className="space-y-3">
+                      {selectedServices.map(id => {
+                        const s = services.find(x => x.id === id);
+                        const Icon = s?.icon || Camera;
+                        return (
+                          <li key={id} className="flex items-center gap-3">
+                            <div className="w-6 h-6 rounded-md bg-blue-50 flex items-center justify-center shrink-0">
+                              <Icon className="w-3.5 h-3.5 text-blue-600" />
+                            </div>
+                            <span className="text-sm font-medium text-slate-700">{s?.name}</span>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-slate-400 italic">Nenhum selecionado</p>
                   )}
                 </div>
+
+                {/* Total Duration Removed per user request */}
               </div>
             </div>
           </div>
