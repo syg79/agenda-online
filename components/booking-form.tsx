@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { MapPin, Clock, Camera, Video, Plane, Check, ChevronRight, ChevronLeft, AlertCircle, Phone, Calendar, Mail, Globe, Aperture, ShoppingBag } from 'lucide-react';
+import { MapPin, Clock, Camera, Video, Plane, Check, ChevronRight, ChevronLeft, AlertCircle, Phone, Calendar, Mail, Globe, ShoppingBag } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { formatPhone, isValidEmail } from '@/lib/utils';
 
@@ -19,6 +19,31 @@ interface BookingFormProps {
   companyName: string;
 }
 
+const DroneIcon = (props: React.ComponentProps<'svg'>) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <rect width="3" height="3" x="10.5" y="10.5" rx="1" />
+    <path d="M10.5 10.5 5 5" />
+    <path d="m19 5-5.5 5.5" />
+    <path d="m5 19 5.5-5.5" />
+    <path d="m19 19-5.5-5.5" />
+    <circle cx="5" cy="5" r="2.5" />
+    <circle cx="19" cy="5" r="2.5" />
+    <circle cx="5" cy="19" r="2.5" />
+    <circle cx="19" cy="19" r="2.5" />
+  </svg>
+)
+
 function BookingForm({ companyName }: BookingFormProps) {
   const searchParams = useSearchParams();
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
@@ -28,9 +53,9 @@ function BookingForm({ companyName }: BookingFormProps) {
     { id: 'photo', name: 'Fotos', duration: 40, icon: Camera, description: 'Sessão fotográfica completa', price: 250 },
     { id: 'video_landscape', name: 'Vídeo Paisagem', duration: 50, icon: Video, description: 'Vídeo horizontal (YouTube)', price: 300 },
     { id: 'video_portrait', name: 'Vídeo Retrato', duration: 50, icon: Video, description: 'Vídeo vertical (Reels/Shorts)', price: 300 },
-    { id: 'drone_photo', name: 'Drone - Fotos', duration: 25, icon: Aperture, description: 'Imagens aéreas', price: 200 },
+    { id: 'drone_photo', name: 'Drone - Fotos', duration: 25, icon: DroneIcon, description: 'Imagens aéreas', price: 200 },
 
-    { id: 'drone_photo_video', name: 'Drone - Fotos + Vídeo', duration: 40, icon: Aperture, description: 'Imagens e vídeo aéreos', price: 350 },
+    { id: 'drone_photo_video', name: 'Drone - Fotos + Vídeo', duration: 40, icon: DroneIcon, description: 'Imagens e vídeo aéreos', price: 350 },
     { id: 'tour_360', name: 'Tour 360º', duration: 60, icon: Globe, description: 'Imersão virtual completa', price: 400 }
   ];
 
