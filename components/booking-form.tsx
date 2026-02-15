@@ -80,7 +80,7 @@ function BookingForm({ companyName }: BookingFormProps) {
 
   const showToast = (message: string) => {
     setToastMessage(message);
-    setTimeout(() => setToastMessage(null), 8000); // 8 seconds
+    setTimeout(() => setToastMessage(null), 15000); // 15 seconds
   };
 
   // Sync state with URL params when they change
@@ -650,11 +650,14 @@ function BookingForm({ companyName }: BookingFormProps) {
         </div>
       )}
 
-      {/* Custom Toast Notification */}
+      {/* Custom Toast Notification - Mobile Optimized */}
       {toastMessage && (
-        <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-full shadow-lg z-50 animate-in fade-in slide-in-from-bottom-4 duration-300 flex items-center gap-2 text-sm max-w-sm text-center">
-          <AlertCircle className="w-5 h-5 text-yellow-400 shrink-0" />
-          {toastMessage}
+        <div className="fixed top-4 left-4 right-4 md:left-1/2 md:right-auto md:transform md:-translate-x-1/2 bg-slate-800 text-white px-6 py-4 rounded-xl shadow-2xl z-50 animate-in fade-in slide-in-from-top-4 duration-300 flex items-start gap-4 text-sm md:max-w-md w-auto border border-slate-700/50">
+          <AlertCircle className="w-5 h-5 text-yellow-400 shrink-0 mt-0.5" />
+          <span className="flex-1 text-left leading-relaxed">{toastMessage}</span>
+          <button onClick={() => setToastMessage(null)} className="text-slate-400 hover:text-white transition-colors shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 18 18" /></svg>
+          </button>
         </div>
       )}
 
@@ -844,20 +847,16 @@ function BookingForm({ companyName }: BookingFormProps) {
                           <h3 className="text-sm font-semibold text-slate-700 uppercase">{week.monthName}</h3>
                         </div>
                       )}
-                      <div className="grid grid-cols-7 gap-2">
+                      <div className="grid grid-cols-7 gap-1 md:gap-2">
                         {weekIdx === 0 && (
                           <React.Fragment>
-                            <div className="text-center text-xs font-medium text-slate-500 pb-2">Dom</div>
-                            <div className="text-center text-xs font-medium text-slate-500 pb-2">Seg</div>
-                            <div className="text-center text-xs font-medium text-slate-500 pb-2">Ter</div>
-                            <div className="text-center text-xs font-medium text-slate-500 pb-2">Qua</div>
-                            <div className="text-center text-xs font-medium text-slate-500 pb-2">Qui</div>
-                            <div className="text-center text-xs font-medium text-slate-500 pb-2">Sex</div>
-                            <div className="text-center text-xs font-medium text-slate-500 pb-2">Sáb</div>
+                            {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((d) => (
+                              <div key={d} className="text-center text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider pb-2">{d}</div>
+                            ))}
                           </React.Fragment>
                         )}
                       </div>
-                      <div className="grid grid-cols-7 gap-2">
+                      <div className="grid grid-cols-7 gap-1 md:gap-2">
                         {week.days.map((item: any, dayIdx: number) => {
                           if (item.type === 'empty') {
                             return <div key={'empty' + dayIdx} className="p-3"></div>;
@@ -869,11 +868,11 @@ function BookingForm({ companyName }: BookingFormProps) {
                               key={'day' + weekIdx + dayIdx}
                               onClick={() => day.available && handleDateSelect(day.date)}
                               disabled={!day.available}
-                              className={'p-3 rounded-lg border-2 transition text-center ' + (isSelected ? 'border-blue-600 bg-blue-50' : day.available ? 'border-slate-200 hover:border-blue-300' : 'border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed')}
+                              className={'p-1 md:p-3 rounded-md md:rounded-lg border transition text-center aspect-square flex flex-col items-center justify-center ' + (isSelected ? 'border-blue-600 bg-blue-50' : day.available ? 'border-slate-200 hover:border-blue-300' : 'border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed')}
                             >
-                              <div className="text-xs text-slate-500 mb-1">{day.weekday}</div>
-                              <div className={'text-lg font-semibold ' + (isSelected ? 'text-blue-600' : day.available ? 'text-slate-800' : 'text-slate-400')}>{day.day}</div>
-                              {day.isSunday && <div className="text-xs text-red-500 mt-1">-</div>}
+                              <div className="hidden md:block text-xs text-slate-500 mb-1">{day.weekday}</div>
+                              <div className={'text-base md:text-lg font-semibold ' + (isSelected ? 'text-blue-600' : day.available ? 'text-slate-800' : 'text-slate-400')}>{day.day}</div>
+                              {day.isSunday && <div className="hidden md:block text-xs text-red-500 mt-1">-</div>}
                             </button>
                           );
                         })}
@@ -1107,6 +1106,7 @@ function BookingForm({ companyName }: BookingFormProps) {
                       <MapPin className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
                       <div>
                         <p className="text-sm font-medium text-slate-800 leading-tight">{address}</p>
+                        {complement && <p className="text-xs text-slate-500 mt-1 block">Comp: {complement}</p>}
                         {neighborhood && <p className="text-xs text-slate-500 mt-0.5">{neighborhood}</p>}
                       </div>
                     </div>
