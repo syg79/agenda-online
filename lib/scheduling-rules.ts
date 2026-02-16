@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { calculateDistance } from '@/lib/distance';
 
 // --- Interfaces ---
 
@@ -7,7 +8,10 @@ export interface Photographer {
     name: string;
     email: string;
     capabilities: string[]; // Service IDs or 'ALL'
-    coverage: string[]; // Neighborhood names or 'ALL'
+    coverage: any; // JSON Object: { "photo": ["A"], "video": ["B"] }
+    latitude?: number | null;
+    longitude?: number | null;
+    travelRadius?: number | null;
 }
 
 // --- CONSTANTS: CURITIBA NEIGHBORHOODS (Official List) ---
@@ -26,7 +30,7 @@ export const CURITIBA_NEIGHBORHOODS = [
     "Tingui", "Uberaba", "Umbará", "Vila Izabel", "Vista Alegre", "Xaxim"
 ];
 
-// --- Helper Functions (Now Async) ---
+// --- Helper Functions (Async) ---
 
 async function getActivePhotographers(): Promise<Photographer[]> {
     const dbPhotographers = await prisma.photographer.findMany({
@@ -36,7 +40,7 @@ async function getActivePhotographers(): Promise<Photographer[]> {
             name: true,
             email: true,
             services: true,
-            neighborhoods: true
+            neighborhoods: true // Now JSON
         }
     });
 
@@ -50,10 +54,9 @@ async function getActivePhotographers(): Promise<Photographer[]> {
 }
 
 /**
- * Filter photographers who cover a specific neighborhood.
- * Handles 'ALL' wildcard.
+ * Filter photographers who cover a specific neighborhood for a specific service.
  */
-export async function getPhotographersForNeighborhood(neighborhood: string): Promise<Photographer[]> {
+export async function getPhotographersForNeighborhood(neighborhood: string, serviceId?: string): Promise<Photographer[]> {
     const photographers = await getActivePhotographers();
 
     if (!neighborhood) return photographers;
@@ -61,14 +64,39 @@ export async function getPhotographersForNeighborhood(neighborhood: string): Pro
     const normalizedNeighborhood = neighborhood.trim().toLowerCase();
 
     return photographers.filter(p => {
-        if (p.coverage.includes('ALL')) return true;
-        return p.coverage.some(c => c.trim().toLowerCase() === normalizedNeighborhood);
+        // Basic Legacy Check
+        if (Array.isArray(p.coverage)) {
+            if (p.coverage.includes('ALL')) return true;
+            return p.coverage.some((c: string) => c.trim().toLowerCase() === normalizedNeighborhood);
+        }
+
+        // JSON Check
+        if (p.coverage && typeof p.coverage === 'object') {
+            // If no service specified, check if ANY service covers it
+            if (!serviceId) {
+                return Object.values(p.coverage).some((list: any) => {
+                    if (Array.isArray(list)) {
+                        if (list.includes('ALL')) return true;
+                        return list.some((c: string) => c.trim().toLowerCase() === normalizedNeighborhood);
+                    }
+                    return false;
+                });
+            }
+
+            // Specific Service Check
+            const list = p.coverage[serviceId];
+            if (Array.isArray(list)) {
+                if (list.includes('ALL')) return true;
+                return list.some((c: string) => c.trim().toLowerCase() === normalizedNeighborhood);
+            }
+        }
+
+        return false;
     });
 }
 
 /**
  * Filter photographers who can perform ALL requested services.
- * Handles 'ALL' wildcard.
  */
 export async function getPhotographersForServices(serviceIds: string[]): Promise<Photographer[]> {
     const photographers = await getActivePhotographers();
@@ -83,23 +111,101 @@ export async function getPhotographersForServices(serviceIds: string[]): Promise
 
 /**
  * Main function to get valid photographers for a booking.
- * Combines Location and Service constraints.
+ * Combines Location and Capabilities.
+ * 
+ * LOGIC UPDATE:
+ * 1. Must implement ALL capabilities (Technical Skill)
+ * 2. Must cover the location for AT LEAST ONE of the requested services (Logistic feasibility)
  */
-export async function getValidPhotographers(neighborhood: string, serviceIds: string[]): Promise<Photographer[]> {
+// Update signature to accept optional coordinates
+export async function getValidPhotographers(
+    neighborhood: string,
+    serviceIds: string[],
+    clientLat?: number,
+    clientLng?: number
+): Promise<Photographer[]> {
     // We fetch all active once to avoid multiple DB calls
-    const allPhotographers = await getActivePhotographers();
-
-    // 1. Filter by Location
-    const byLocation = allPhotographers.filter(p => {
-        if (!neighborhood) return true;
-        if (p.coverage.includes('ALL')) return true;
-        return p.coverage.some(c => c.trim().toLowerCase() === neighborhood.trim().toLowerCase());
+    // Phase 5: Also fetch lat/lng/travelRadius
+    const allPhotographersRaw = await prisma.photographer.findMany({
+        where: { active: true },
+        select: {
+            id: true,
+            name: true,
+            email: true,
+            services: true,
+            neighborhoods: true,
+            latitude: true,
+            longitude: true,
+            travelRadius: true
+        }
     });
 
-    // 2. Filter by Capabilities (Services)
-    return byLocation.filter(p => {
+    const allPhotographers = allPhotographersRaw.map(p => ({
+        id: p.id,
+        name: p.name,
+        email: p.email,
+        capabilities: p.services,
+        coverage: p.neighborhoods,
+        latitude: p.latitude,
+        longitude: p.longitude,
+        travelRadius: p.travelRadius || 15 // Default 15km
+    }));
+
+    // 1. Capability Check (Strict: Must be able to do the job)
+    const capablePhotographers = allPhotographers.filter(p => {
         if (p.capabilities.includes('ALL')) return true;
         if (!serviceIds || serviceIds.length === 0) return true;
         return serviceIds.every(s => p.capabilities.includes(s));
+    });
+
+    // 2. Coverage Check (Flexible: If I go for Video, I can do Photo too)
+    return capablePhotographers.filter(p => {
+        // --- PHASE 5: SHADOW MODE START ---
+        if (clientLat && clientLng && p.latitude && p.longitude) {
+            const dist = calculateDistance(clientLat, clientLng, p.latitude, p.longitude);
+            const isWithinRadius = dist <= (p.travelRadius || 15);
+
+            // Log for analysis (Shadow Mode)
+            // In production this would be a proper log service
+            // console.log(`[SHADOW_MODE] ${p.name}: Dist=${dist}km. Radius=${p.travelRadius}km. Covered=${isWithinRadius}`);
+        }
+        // --- PHASE 5: SHADOW MODE END ---
+
+        if (!neighborhood) return true;
+
+        const normalizedNeighborhood = neighborhood.trim().toLowerCase();
+        const coverage = p.coverage as any;
+
+        // Legacy Array Handling
+        if (Array.isArray(coverage)) {
+            if (coverage.includes('ALL')) return true;
+            return coverage.some((c: string) => c.trim().toLowerCase() === normalizedNeighborhood);
+        }
+
+        // JSON Handling
+        if (coverage && typeof coverage === 'object') {
+            // If 'ALL' services requested or empty, assume generic check
+            if (!serviceIds || serviceIds.length === 0) {
+                return Object.values(coverage).some((list: any) => {
+                    if (Array.isArray(list)) {
+                        if (list.includes('ALL')) return true;
+                        return list.some((c: string) => c.trim().toLowerCase() === normalizedNeighborhood);
+                    }
+                    return false;
+                });
+            }
+
+            // Logic: Is there ANY service in the request that authorizes travel to this neighborhood?
+            return serviceIds.some(serviceId => {
+                const list = coverage[serviceId];
+                if (Array.isArray(list)) {
+                    if (list.includes('ALL')) return true;
+                    return list.some((c: string) => c.trim().toLowerCase() === normalizedNeighborhood);
+                }
+                return false;
+            });
+        }
+
+        return false; // No coverage data found -> Not covered
     });
 }

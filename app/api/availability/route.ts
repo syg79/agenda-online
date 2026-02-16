@@ -20,7 +20,10 @@ export async function GET(request: Request) {
         // availabilityService expects a Date object and extracts YYYY-MM-DD
 
         const neighborhood = searchParams.get('neighborhood');
-        const slots = await getAvailability(date, services, neighborhood || undefined);
+        const lat = searchParams.get('lat') ? parseFloat(searchParams.get('lat')!) : undefined;
+        const lng = searchParams.get('lng') ? parseFloat(searchParams.get('lng')!) : undefined;
+
+        const slots = await getAvailability(date, services, neighborhood || undefined, lat, lng);
 
         return NextResponse.json({ slots });
 

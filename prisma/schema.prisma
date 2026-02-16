@@ -28,6 +28,8 @@ model Booking {
   state        String   @default("PR")
   zipCode      String?
   complement   String?  // Complemento (Apto, Bloco, etc.)
+  latitude     Float?   // Phase 5
+  longitude    Float?   // Phase 5
 
   // Detalhes do Serviço
   services String[] // Array de strings (ex: ["Fotos HDR", "Drone"])
@@ -53,7 +55,13 @@ model Photographer {
   email     String   @unique
   active    Boolean  @default(true)
   services  String[] // ["photo", "video", "drone"]
-  neighborhoods String[] // List of neighborhoods covered (e.g. ["Batel", "Centro"])
+  neighborhoods Json? // Structure: { "photo": ["Batel"], "video": ["ALL"] }
+  
+  // Phase 5: Geolocation
+  latitude      Float?
+  longitude     Float?
+  travelRadius  Int?     @default(15) // km
+
   bookings  Booking[]
   timeBlocks TimeBlock[]
   regions   PhotographerRegion[]

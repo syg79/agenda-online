@@ -19,7 +19,7 @@ export async function getAdminData() {
     };
 }
 
-export async function updatePhotographerNeighborhoods(id: string, neighborhoods: string[]) {
+export async function updatePhotographerNeighborhoods(id: string, neighborhoods: any) {
     try {
         await prisma.photographer.update({
             where: { id },

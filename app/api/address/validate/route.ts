@@ -60,6 +60,8 @@ export async function POST(request: Request) {
         state,
         zipCode,
         formattedAddress: result.formatted_address,
+        latitude: result.geometry.location.lat,
+        longitude: result.geometry.location.lng,
       });
     } else {
       return NextResponse.json({
@@ -67,7 +69,9 @@ export async function POST(request: Request) {
         city,
         neighborhood,
         state,
-        zipCode
+        zipCode,
+        latitude: result.geometry.location.lat,
+        longitude: result.geometry.location.lng,
       });
     }
 

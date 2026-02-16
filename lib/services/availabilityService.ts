@@ -8,7 +8,13 @@ type TimeSlot = {
     available: number;
 };
 
-export async function getAvailability(date: Date, serviceIds: string[], neighborhood?: string): Promise<TimeSlot[]> {
+export async function getAvailability(
+    date: Date,
+    serviceIds: string[],
+    neighborhood?: string,
+    lat?: number,
+    lng?: number
+): Promise<TimeSlot[]> {
     const dateStr = date.toISOString().split('T')[0];
     const dayOfWeek = date.getUTCDay(); // 0=Sun, 6=Sat
 
@@ -36,7 +42,7 @@ export async function getAvailability(date: Date, serviceIds: string[], neighbor
     const totalDuration = slotsNeeded * 30;
 
     // 3. Filter Photographers by Capability and Location (Rules Engine)
-    const qualifiedPhotographers = await getValidPhotographers(neighborhood || '', serviceIds);
+    const qualifiedPhotographers = await getValidPhotographers(neighborhood || '', serviceIds, lat, lng);
 
     if (qualifiedPhotographers.length === 0) return [];
 

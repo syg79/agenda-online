@@ -76,6 +76,9 @@ function BookingForm({ companyName }: BookingFormProps) {
   const [complement, setComplement] = useState('');
   const [notes, setNotes] = useState('');
 
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
+
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (message: string) => {
@@ -257,7 +260,14 @@ function BookingForm({ companyName }: BookingFormProps) {
         // We don't clear date, but we force re-fetch if they go to that step
       }
       setNeighborhood(data.neighborhood);
+      setNeighborhood(data.neighborhood);
       setZipCode(data.zipCode || '');
+
+      if (data.latitude && data.longitude) {
+        setLatitude(data.latitude);
+        setLongitude(data.longitude);
+      }
+
       setError('');
       return true;
     } catch (err) {
@@ -336,9 +346,12 @@ function BookingForm({ companyName }: BookingFormProps) {
     const servicesString = servicesToUse.join(',');
 
     try {
-      // Include neighborhood in the request to filter photographers
+      // Include neighborhood and coordinates in the request
       const neighborhoodParam = neighborhood ? `&neighborhood=${encodeURIComponent(neighborhood)}` : '';
-      const response = await fetch(`/api/availability?date=${dateString}&services=${servicesString}${neighborhoodParam}`);
+      const latParam = latitude ? `&lat=${latitude}` : '';
+      const lngParam = longitude ? `&lng=${longitude}` : '';
+
+      const response = await fetch(`/api/availability?date=${dateString}&services=${servicesString}${neighborhoodParam}${latParam}${lngParam}`);
       const data = await response.json();
 
       if (!response.ok) {
@@ -421,6 +434,8 @@ function BookingForm({ companyName }: BookingFormProps) {
   };
 
   const goNext = async () => {
+    setError('');
+
     if (step === 1) {
       if (!address.trim()) {
         setError('Por favor, insira o endereço completo');
@@ -429,18 +444,52 @@ function BookingForm({ companyName }: BookingFormProps) {
       const isValid = await validateAddress();
       if (!isValid) return;
     }
-    if (step === 2 && selectedServices.length === 0) {
-      setError('Selecione pelo menos um serviço');
-      return;
+
+    if (step === 2) {
+      if (selectedServices.length === 0) {
+        setError('Por favor, selecione pelo menos um serviço.');
+        return;
+      }
+
+      if (!address || !neighborhood) {
+        setError('Por favor, informe seu endereço completo.');
+        return;
+      }
+
+      // Check Coverage
+      setIsLoadingSlots(true); // Reuse loading state or create new one
+      try {
+
+
+        const result = await checkCoverage(neighborhood, selectedServices, latitude || undefined, longitude || undefined);
+        setIsLoadingSlots(false);
+
+        if (!result.available) {
+          setError(`Desculpe, não temos profissionais disponíveis para os serviços selecionados em ${neighborhood} no momento.`);
+          return;
+        }
+      } catch (err) {
+        setIsLoadingSlots(false);
+        console.error(err);
+        setError('Erro ao verificar disponibilidade. Tente novamente.');
+        return;
+      }
     }
-    if (step === 3 && !selectedDate) {
-      setError('Selecione uma data');
-      return;
+
+    if (step === 3) {
+      if (!selectedDate) {
+        setError('Selecione uma data');
+        return;
+      }
     }
-    if (step === 4 && !selectedTime) {
-      setError('Selecione um horário');
-      return;
+
+    if (step === 4) {
+      if (!selectedTime) {
+        setError('Selecione um horário');
+        return;
+      }
     }
+
     if (step === 5) {
       if (!clientName || !clientEmail || !clientPhone) {
         setError('Preencha todos os campos obrigatórios');
@@ -473,6 +522,8 @@ function BookingForm({ companyName }: BookingFormProps) {
         complement,
         neighborhood,
         zipCode,
+        latitude,
+        longitude,
         selectedServices,
         selectedDate,
         selectedTime,
@@ -923,7 +974,20 @@ function BookingForm({ companyName }: BookingFormProps) {
                   ))}
                 </div>
                 {!isLoadingSlots && timeSlots.length === 0 && !error && (
-                  <p className="text-slate-500 col-span-full text-center py-4">Nenhum horário encontrado para este dia. Tente outra data.</p>
+                  <div className="col-span-full text-center py-6 space-y-4">
+                    <p className="text-slate-500">Nenhum horário encontrado para este dia.</p>
+                    <div className="p-4 bg-orange-50 border border-orange-100 rounded-lg max-w-md mx-auto">
+                      <p className="text-sm text-orange-800 mb-3">Não encontrou o horário que desejava?</p>
+                      <a
+                        href={`https://wa.me/?text=Olá, tentei agendar para ${address} (${neighborhood}) em ${selectedDate.toLocaleDateString('pt-BR')} mas não encontrei horário. Podem me ajudar?`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 bg-[#25D366] hover:bg-[#20bd5a] text-white font-medium py-2 px-4 rounded-lg transition text-sm"
+                      >
+                        Fale com a gente no WhatsApp
+                      </a>
+                    </div>
+                  </div>
                 )}
                 {error && (
                   <div className="flex items-start gap-2 p-4 bg-red-50 border border-red-200 rounded-lg">
@@ -1052,34 +1116,17 @@ function BookingForm({ companyName }: BookingFormProps) {
                   Enviamos os detalhes para seu email. Nossa equipe confirmará em breve.
                 </p>
 
-                {/* Action Buttons (Disabled per user request)
-              <div className="flex flex-col gap-3 max-w-sm mx-auto mt-6">
-                <a
-                  href={`https://wa.me/?text=Olá, acabei de solicitar um agendamento. Protocolo: ${protocol}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 w-full bg-[#25D366] hover:bg-[#20bd5a] text-white font-medium py-3 px-4 rounded-lg transition"
-                >
-                  <span className="font-bold">WhatsApp</span> (Compartilhar)
-                </a>
-
-                <a
-                  href={`https://calendar.google.com/calendar/render?action=TEMPLATE&text=Sessão de Fotos - ${protocol}&details=Protocolo: ${protocol}%0AEndereço: ${address}&dates=${selectedDate ? selectedDate.toISOString().replace(/-|:|\.\d\d\d/g, "").substring(0, 8) : ''}/${selectedDate ? new Date(selectedDate.getTime() + 60 * 60 * 1000).toISOString().replace(/-|:|\.\d\d\d/g, "").substring(0, 8) : ''}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition"
-                >
-                  <Calendar className="w-5 h-5" /> Adicionar ao Google Agenda
-                </a>
-
-                <a
-                  href={`mailto:?subject=Agendamento ${protocol}&body=Olá, segue o protocolo do meu agendamento: ${protocol}`}
-                  className="flex items-center justify-center gap-2 w-full bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium py-3 px-4 rounded-lg transition"
-                >
-                  <Mail className="w-5 h-5" /> Enviar por Email
-                </a>
-              </div>
-              */}
+                {/* Action Buttons */}
+                <div className="flex flex-col gap-3 max-w-sm mx-auto mt-6">
+                  <a
+                    href={`https://wa.me/?text=Olá, acabei de solicitar um agendamento.%0A%0AProtocolo: ${protocol}%0AData: ${selectedDate ? selectedDate.toLocaleDateString("pt-BR") : ""}%0AHorário: ${selectedTime}%0ALocal: ${address} - ${neighborhood}%0A%0AMapa: https://www.google.com/maps/search/?api=1%26query=${encodeURIComponent(address + " - " + neighborhood + ", Curitiba - PR")}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 w-full bg-[#25D366] hover:bg-[#20bd5a] text-white font-medium py-3 px-4 rounded-lg transition"
+                  >
+                    <span className="font-bold">WhatsApp</span> (Compartilhar)
+                  </a>
+                </div>
 
                 <div className="pt-6">
                   <button onClick={() => window.location.href = '/agendar'} className="text-blue-600 hover:underline font-medium">
@@ -1170,6 +1217,7 @@ function BookingForm({ companyName }: BookingFormProps) {
         </div>
       </div>
     </div>
+
   );
 }
 

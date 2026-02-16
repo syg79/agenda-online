@@ -16,6 +16,8 @@ export async function POST(request: Request) {
       neighborhood,
       zipCode,
       complement,
+      latitude,
+      longitude,
       selectedServices,
       selectedDate,
       selectedTime,
@@ -58,6 +60,8 @@ export async function POST(request: Request) {
             neighborhood,
             zipCode,
             complement,
+            latitude,
+            longitude,
             services: selectedServices,
             date: new Date(selectedDate),
             time: selectedTime,
@@ -89,6 +93,8 @@ export async function POST(request: Request) {
           neighborhood,
           zipCode,
           complement,
+          latitude,
+          longitude,
           services: selectedServices, // Array de strings
           date: new Date(selectedDate),
           time: selectedTime,
@@ -112,6 +118,7 @@ export async function POST(request: Request) {
           <p><strong>Data:</strong> ${new Date(selectedDate).toLocaleDateString('pt-BR')}</p>
           <p><strong>Horário:</strong> ${selectedTime}</p>
           <p><strong>Endereço:</strong> ${address} - ${neighborhood}</p>
+          <p><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address + ' - ' + neighborhood + ', Curitiba - PR')}" style="color: #2563eb; text-decoration: none;">📍 Ver localização no mapa</a></p>
           <p><strong>Serviços:</strong> ${selectedServices.join(', ')}</p>
         </div>
 
