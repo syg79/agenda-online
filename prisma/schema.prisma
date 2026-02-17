@@ -61,11 +61,26 @@ model Photographer {
   latitude      Float?
   longitude     Float?
   travelRadius  Int?     @default(15) // km
+  
+  // Phase 8: Smart Scheduling (SQL-Centric)
+  color         String   @default("#3B82F6")
+  baseLat       Float?   @default(-25.4284)
+  baseLng       Float?   @default(-49.2733)
 
   bookings  Booking[]
   timeBlocks TimeBlock[]
   regions   PhotographerRegion[]
   preferences ClientPreference[]
+}
+
+model CoverageArea {
+  id        String   @id @default(uuid())
+  name      String
+  areaType  String   @default("auto") // 'auto' | 'manual'
+  centerLat Float
+  centerLng Float
+  radiusKm  Float    @default(20)
+  isActive  Boolean  @default(true)
 }
 
 model TimeBlock {
@@ -118,4 +133,28 @@ model PhotographerRegion {
   region         Region       @relation(fields: [regionId], references: [id])
   
   @@id([photographerId, regionId])
+}
+
+// --- PHASE 6: ROUTING CACHE ---
+model RouteCache {
+  id          String   @id @default(uuid())
+  origin      String   // "lat,lng" (e.g., "-25.42,-49.27")
+  destination String   // "lat,lng"
+  distance    Float    // km
+  duration    Float    // minutes
+  updatedAt   DateTime @updatedAt
+
+  @@unique([origin, destination])
+}
+
+// --- PHASE 6: DYNAMIC COORDINATES ---
+model CepLocation {
+  id           String   @id @default(uuid())
+  zipCode      String   @unique // The exact CEP (e.g. "80240-010")
+  latitude     Float
+  longitude    Float
+  neighborhood String?
+  city         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }

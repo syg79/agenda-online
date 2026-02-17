@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { calculateDistance } from '@/lib/distance';
+import { getRouteStats } from '@/lib/services/routing';
 
 // --- Interfaces ---
 
@@ -160,16 +161,28 @@ export async function getValidPhotographers(
 
     // 2. Coverage Check (Flexible: If I go for Video, I can do Photo too)
     return capablePhotographers.filter(p => {
-        // --- PHASE 5: SHADOW MODE START ---
+        // MATCH LOGGING
+        // console.log(`Checking ${p.name} for ${neighborhood} (Lat: ${clientLat}, Lng: ${clientLng})`);
+
+        // --- PHASE 5 & 6: ACTIVE MODE (DISABLED BY USER REQUEST - "Esqueça esse raio") ---
+        /*
         if (clientLat && clientLng && p.latitude && p.longitude) {
             const dist = calculateDistance(clientLat, clientLng, p.latitude, p.longitude);
             const isWithinRadius = dist <= (p.travelRadius || 15);
 
-            // Log for analysis (Shadow Mode)
-            // In production this would be a proper log service
-            // console.log(`[SHADOW_MODE] ${p.name}: Dist=${dist}km. Radius=${p.travelRadius}km. Covered=${isWithinRadius}`);
+            // Fire-and-forget routing stats (Async)
+            getRouteStats(clientLat, clientLng, p.latitude, p.longitude).catch(console.error);
+
+            // ACTIVE LOGIC: If within radius, AUTOMATICALLY VALID (ignores neighborhood list legacy)
+            if (isWithinRadius) {
+                 // console.log(`  -> Matched by Radius (${dist.toFixed(2)}km <= ${p.travelRadius}km)`);
+                 return true;
+            } else {
+                 // console.log(`  -> Failed Radius (${dist.toFixed(2)}km > ${p.travelRadius}km)`);
+            }
         }
-        // --- PHASE 5: SHADOW MODE END ---
+        */
+        // --- END ACTIVE MODE ---
 
         if (!neighborhood) return true;
 

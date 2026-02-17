@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { calculateEndTime, timeToMinutes } from '@/lib/utils';
 import { getValidPhotographers } from '@/lib/scheduling-rules';
+import { checkSlotViability } from './smart-scheduling';
 
 type TimeSlot = {
     time: string;
@@ -115,6 +116,20 @@ export async function getAvailability(
             });
 
             if (hasBlockConflict) continue;
+
+            // --- SMART SCHEDULING INTEGRATION (Phase 8) ---
+            if (lat && lng) {
+                const viability = await checkSlotViability(
+                    startMinutes,
+                    endMinutes,
+                    lat,
+                    lng,
+                    phBookings // Pass only this photographer's bookings
+                );
+
+                if (viability === 'IMPOSSIBLE') continue;
+            }
+            // ----------------------------------------------
 
             availableCount++;
         }

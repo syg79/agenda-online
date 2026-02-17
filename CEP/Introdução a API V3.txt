@@ -1,0 +1,117 @@
+Introdução a API V3
+A URL base da API segue o modelo: https://www.cepaberto.com/api/v3/metodo?parametro=valor[&parametro2=valor2]
+
+metodo especifica a busca a ser feita, atualmente os metodos suportados são cep, nearest, address, cities e update.
+parametro e valor dependem da requisição feita e serão descritos nas seções seguintes.
+Os resultados são retornados em formato JSON.
+Se nenhum CEP for encontrado com o valor buscado, o resultado será vazio, i.e.,
+
+{}
+Busca do CEP pelo número
+Dado um número de CEP busca os dados respectivos
+
+GET https://www.cepaberto.com/api/v3/cep
+Parametro aceito cep
+Exemplo de busca pelos dados do CEP 01001000 em Python:
+
+import requests
+
+url = "https://www.cepaberto.com/api/v3/cep?cep=01001000"
+# O seu token está visível apenas pra você
+headers = {'Authorization': 'Token token=a83d0428808366a3e559b74ba9202884'}
+response = requests.get(url, headers=headers)
+
+print(response.json())
+Resultado
+Para o exemplo anterior, o resultado será:
+
+{"cidade": {"ibge": "3550308", "nome": "São Paulo", "ddd": 11}, "estado": {"sigla": "SP"}, "altitude": 760.0, "longitude": "-46.636", "bairro": "Sé", "complemento": "- lado ímpar", "cep": "01001000", "logradouro": "Praça da Sé", "latitude": "-23.5479099981"}
+Busca do CEP pela latitude e longitude mais próxima
+Dado um par latitude e longitude, retorna-se o CEP mais próximo do ponto correspondente a estas coordenadas. A busca limita-se a um raio de 10km a partir do ponto referente as coordenadas passadas como parâmetro.
+
+GET https://www.cepaberto.com/api/v3/nearest
+Parametros aceitos lat e lng
+Exemplo de busca pelas coordenadas -20.55,-43.63 em Python:
+
+import requests
+
+url = "https://www.cepaberto.com/api/v3/nearest"
+# O seu token está visível apenas pra você
+headers = {'Authorization': 'Token token=a83d0428808366a3e559b74ba9202884'}
+params = {'lat': -20.55, 'lng': -43.63}
+response = requests.get(url, headers=headers, params=params)
+
+print(response.json())
+Resultado
+Para o exemplo anterior, o resultado será:
+
+{"cidade": {"ibge": "3550308", "nome": "São Paulo", "ddd": 11}, "estado": {"sigla": "SP"}, "altitude": 760.0, "longitude": "-46.636", "bairro": "Sé", "complemento": "- lado ímpar", "cep": "01001000", "logradouro": "Praça da Sé", "latitude": "-23.5479099981"}
+Busca do CEP por estado, cidade, bairro e logradouro
+Dados os valores de estado (obrigatório), cidade (obrigatório), logradouro (opcional) e bairro (opcional), retorna-se o CEP referente. A pesquisa é feita com match exato para os valores de estado, cidade e bairro. Já para o logradouro, é feito um match LIKE . O logradouro não é um campo obrigatório, pois certas cidades e municípios possuem um CEP próprio, havendo ou não CEPs por logradouro.
+
+GET https://www.cepaberto.com/api/v3/address
+Parametros aceitos estado, cidade, bairro e logradouro
+Exemplo de busca pelo CEP da cidade de Ubatuba, SP em Python:
+
+import requests
+
+url = "https://www.cepaberto.com/api/v3/address"
+# O seu token está visível apenas pra você
+headers = {'Authorization': 'Token token=a83d0428808366a3e559b74ba9202884'}
+params = {'estado': 'SP', 'cidade': 'Ubatuba'}
+response = requests.get(url, headers=headers, params=params)
+
+print(response.json())
+Resultado
+Para o exemplo anterior, o resultado será:
+
+{'latitude': '-23.4336578', 'longitude': '-45.0838481', 'estado': {'sigla': 'SP'}, 'cep': '11680000', 'cidade': {'nome': 'Ubatuba', 'ddd': 12, 'ibge': '3555406'}, 'altitude': 4.8}
+Mas os nomes de certas cidades ou municípios nem sempre possuem grafia unificada. Ao pesquisar pelo município de "Santo Antônio da Estiva", estado do Amazonas, nenhum resultado será encontrado.
+
+O problema é que tal município é escrito na base de dados do CEP Aberto como "Santo Antônio da Estiva (Pirajuí)", que está de acordo com a base dos Correios. Para evitar erro no valor da cidade passada como parâmetro, um novo endpoint foi adicionado a API do CEP Aberto, /cities/.
+
+Para buscar pelos nomes de todas as cidades e municípios, de um certo estado, no banco de dados do CEP Aberto, basta passar a sigla do estado: https://www.cepaberto.com/api/v3/cities?estado=AM
+
+Resultado
+Para o exemplo anterior, o resultado será:
+
+[
+  {"nome":"Agrovila São Sebastião do Caburi (Parintins)"},
+  {"nome":"Alvarães"},
+  {"nome":"Amatari (Itacoatiara)"},
+  {"nome":"Amaturá"},
+  {"nome":"Anamã"},
+  {"nome":"Anori"},
+  {"nome":"Apuí"},
+  {"nome":"Araras (Caapiranga)"}, ...
+]
+Com este resultado disponível, resta ao usuário da API apenas conhecer logradouro (e bairro) para fazer busca pelo CEP.
+
+Atualização de CEPs pelo número
+Atualiza automaticamente os CEPs informados. Caso você tenha CEPs que não estão disponíveis no CEP Aberto, ou que não estão com a informação em dia, você pode atualizá-los através da API:
+
+POST https://www.cepaberto.com/api/v3/update
+Parametro aceito ceps
+Exemplo de atualização de 3 CEPs 32371380,32210180,36420000 em Python. Os valores no parametro ceps sao separados por vírgula. O número máximo de CEPs aceito é 100 por requisição.
+
+import requests
+
+url = "https://www.cepaberto.com/api/v3/update"
+# O seu token está visível apenas pra você
+headers = {'Authorization': 'Token token=a83d0428808366a3e559b74ba9202884'}
+data = {'ceps': ",".join(['32371380', '41400120', '36420000'])}
+response = requests.post(url, data=data, headers=headers)
+
+print(response.json())
+Resultado
+Para o exemplo anterior, o resultado será a lista de CEPs que foram atualizados com sucesso, repare que o último CEP não existe, então não será atualizado:
+
+[32371380,41400120]
+Token de Acesso
+Para ter acesso a API, um token de acesso é necessário. O seu token de acesso pessoal é: a83d0428808366a3e559b74ba9202884. Este token deve ser passado no header HTTP da requisição.
+
+Limites
+Inicialmente, a API tem um limite de requisições por intervalo de tempo. Este limite existe para inibir possiveis bots que possam comprometer o tempo de resposta. Atualmente, o intervalo entre requisições, para cada usuário, é de 1 segundo. Requisições mais frequentes resultarão em HTTP Error 403 Forbidden. O limite máximo de requisições, para cada usuário, é de 10 mil por dia.
+
+Exemplos
+Veja neste repositório Github exemplos de como implementar a requisição a API usando seu token de acesso em Bash, Python, Ruby, C#, PHP, Delphi, Java, VBA, Golang e Node.js. Você pode contribuir com esta lista, envie uma PR com o trecho de código na linguagem que você usa.

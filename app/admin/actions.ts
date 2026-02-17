@@ -3,6 +3,8 @@
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 
+import { CURITIBA_NEIGHBORHOODS } from '@/lib/scheduling-rules';
+
 export async function getAdminData() {
     const photographers = await prisma.photographer.findMany({
         where: { active: true },
@@ -15,7 +17,7 @@ export async function getAdminData() {
 
     return {
         photographers,
-        neighborhoods: curitibaRegion?.neighborhoods || []
+        neighborhoods: (curitibaRegion?.neighborhoods as string[]) || CURITIBA_NEIGHBORHOODS
     };
 }
 

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { MapPin, Clock, Camera, Video, Plane, Check, ChevronRight, ChevronLeft, AlertCircle, Phone, Calendar, Mail, Globe, ShoppingBag } from 'lucide-react';
+import { MapPin, Clock, Camera, Video, Plane, Check, ChevronRight, ChevronLeft, AlertCircle, Phone, Calendar, Mail, Globe, ShoppingBag, MessageCircle } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { formatPhone, isValidEmail } from '@/lib/utils';
 
@@ -44,9 +44,37 @@ const DroneIcon = (props: React.ComponentProps<'svg'>) => (
   </svg>
 )
 
+// Helper function to check coverage via API
+async function checkCoverage(neighborhood: string, selectedServices: string[], lat?: number, lng?: number) {
+  try {
+    const res = await fetch('/api/admin/coverage', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        latitude: lat || 0,
+        longitude: lng || 0,
+        address: 'Check via BookingForm',
+        neighborhood
+      })
+    });
+
+    if (!res.ok) throw new Error('Falha na verificação');
+
+    const data = await res.json();
+    // Check if ANY photographer covers it
+    const hasCoverage = data.results.some((p: any) => p.status === 'COVERED');
+
+    return { available: hasCoverage };
+  } catch (error) {
+    console.error('Check Coverage Error:', error);
+    return { available: false };
+  }
+}
+
 function BookingForm({ companyName }: BookingFormProps) {
   const searchParams = useSearchParams();
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
+  const [showManualScheduling, setShowManualScheduling] = useState(false);
   const [showPrices, setShowPrices] = useState(false); // Controle facultativo de preços
 
   const services: Service[] = [
@@ -62,6 +90,7 @@ function BookingForm({ companyName }: BookingFormProps) {
   const [step, setStep] = useState(1);
 
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
+  const [dateStatus, setDateStatus] = useState<Record<string, string>>({}); // 'YYYY-MM-DD' -> 'OPEN' | 'FULL' | 'CLOSED'
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedTime, setSelectedTime] = useState('');
 
@@ -384,6 +413,44 @@ function BookingForm({ companyName }: BookingFormProps) {
     fetchAvailability(date);
   };
 
+  // Fetch Calendar Status when entering Step 3
+  useEffect(() => {
+    if (step === 3 && address && selectedServices.length > 0) {
+      const fetchCalendar = async () => {
+        try {
+          const today = new Date();
+          const query = new URLSearchParams({
+            date: `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}`,
+            services: selectedServices.join(','),
+            neighborhood: neighborhood,
+            lat: latitude?.toString() || '',
+            lng: longitude?.toString() || '',
+            zipCode: zipCode || ''
+          });
+
+          const res = await fetch(`/api/availability/calendar?${query.toString()}`);
+          if (res.ok) {
+            const data = await res.json();
+            // Transform { 1: 'OPEN' } to { '2023-10-01': 'OPEN' }
+            const statusMap: Record<string, string> = {};
+            // Note: API returns days for queried month. 
+            // Ideally we should query for displayed month, but current logic mimics static month.
+            // Let's assume current month for now.
+            Object.entries(data.days).forEach(([day, status]) => {
+              const dateKey = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${day.padStart(2, '0')}`;
+              statusMap[dateKey] = status as string;
+            });
+            setDateStatus(statusMap);
+          }
+        } catch (e) {
+          console.error("Failed to fetch calendar", e);
+        }
+      };
+
+      fetchCalendar();
+    }
+  }, [step, address, neighborhood, selectedServices]);
+
   const generateCalendar = () => {
     const today = new Date();
     const calendar: any[] = [];
@@ -412,7 +479,15 @@ function BookingForm({ companyName }: BookingFormProps) {
         day: date.getDate(),
         month: date.getMonth(),
         weekday: date.toLocaleDateString('pt-BR', { weekday: 'short' }),
-        available: !isSunday && !isPast,
+        available: !isSunday && !isPast && (
+          // Use API status if available, default to OPEN if not loaded yet (or handle as loading)
+          // Key format: YYYY-MM-DD
+          (() => {
+            const key = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+            const status = dateStatus[key];
+            return status === 'OPEN' || status === undefined; // Default to true if loading
+          })()
+        ),
         isSunday: isSunday
       });
     }
@@ -456,16 +531,15 @@ function BookingForm({ companyName }: BookingFormProps) {
         return;
       }
 
-      // Check Coverage
-      setIsLoadingSlots(true); // Reuse loading state or create new one
+      // Check Coverage (Active: List-Based Strict Check)
+      setIsLoadingSlots(true);
       try {
-
-
         const result = await checkCoverage(neighborhood, selectedServices, latitude || undefined, longitude || undefined);
         setIsLoadingSlots(false);
 
         if (!result.available) {
-          setError(`Desculpe, não temos profissionais disponíveis para os serviços selecionados em ${neighborhood} no momento.`);
+          // If no one covers this neighborhood, show manual scheduling fallback
+          setShowManualScheduling(true);
           return;
         }
       } catch (err) {
@@ -1216,6 +1290,38 @@ function BookingForm({ companyName }: BookingFormProps) {
           </div>
         </div>
       </div>
+      {/* MANUAL SCHEDULING FALLBACK */}
+      {showManualScheduling && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full text-center shadow-xl">
+            <div className="w-16 h-16 bg-yellow-100 text-yellow-600 rounded-full flex items-center justify-center mx-auto mb-4">
+              <MessageCircle size={32} />
+            </div>
+            <h3 className="text-xl font-bold text-slate-800 mb-2">Agendamento Automático Indisponível</h3>
+            <p className="text-slate-600 mb-6">
+              Para esta região ou combinação de serviços, é necessário verificar a logística de deslocamento manualmente com nossa equipe.
+            </p>
+
+            <a
+              href={`https://wa.me/5541999999999?text=Olá, tentei agendar em *${neighborhood}* (${selectedServices.join(', ')}) mas o sistema pediu contato manual.`}
+              target="_blank"
+              rel="noreferrer"
+              className="block w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3.5 rounded-xl transition flex items-center justify-center gap-2 mb-3"
+            >
+              <MessageCircle size={20} />
+              Chamar no WhatsApp
+            </a>
+
+            <button
+              onClick={() => setShowManualScheduling(false)}
+              className="text-slate-500 hover:text-slate-700 text-sm font-medium"
+            >
+              Voltar e corrigir endereço
+            </button>
+          </div>
+        </div>
+      )}
+
     </div>
 
   );

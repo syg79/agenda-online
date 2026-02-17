@@ -1,0 +1,2045 @@
+Planejamento Completo do Sistema de Agendamento
+Visão Geral dos Fluxos
+text
+
+┌─────────────────────────────────────────────────────────────┐
+│                                                             │
+│                    ┌──────────────┐                         │
+│                    │  NOVO PEDIDO │                         │
+│                    └──────┬───────┘                         │
+│                           │                                 │
+│              ┌────────────┴────────────┐                    │
+│              ▼                         ▼                    │
+│     ┌────────────────┐       ┌─────────────────┐           │
+│     │    ATIVO        │       │    PASSIVO       │           │
+│     │  (Secretária)   │       │   (Cliente)      │           │
+│     └───────┬────────┘       └────────┬────────┘           │
+│             │                         │                     │
+│             │                         ▼                     │
+│             │                ┌─────────────────┐            │
+│             │                │ Está na área de  │            │
+│             │                │ cobertura?       │            │
+│             │                └───┬─────────┬───┘            │
+│             │                    │         │                 │
+│             │                  SIM        NÃO               │
+│             │                    │         │                 │
+│             │                    │    ┌────▼──────────┐      │
+│             │                    │    │ WhatsApp com  │      │
+│             │                    │    │ secretária    │      │
+│             │                    │    └───────────────┘      │
+│             │                    │                           │
+│             │                    ▼                           │
+│             │          ┌──────────────────┐                  │
+│             │          │ Opção A: Ofertar │                  │
+│             │          │ melhores datas   │                  │
+│             │          │                  │                  │
+│             │          │ Opção B: Cliente │                  │
+│             │          │ escolhe (filtrado)│                 │
+│             │          └────────┬─────────┘                  │
+│             │                   │                            │
+│             ▼                   ▼                            │
+│     ┌───────────────────────────────────┐                   │
+│     │         AGENDA CONFIRMADA         │                   │
+│     │  Fotógrafo X / Dia Y / Slot Z    │                   │
+│     └───────────────────────────────────┘                   │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+Fases de Implementação
+text
+
+FASE 1 (Base)          FASE 2 (Secretária)      FASE 3 (Cliente)
+───────────────        ─────────────────────     ────────────────
+☐ Banco de dados       ☐ Tela visão geral       ☐ Formulário público
+☐ Geocoding            ☐ Matriz proximidade     ☐ Verificar cobertura
+☐ Cache distâncias     ☐ Mapa com rota          ☐ Sugerir datas
+☐ API básica           ☐ Drag & drop agenda     ☐ Confirmar agendamento
+                       ☐ Filtros inteligentes
+FASE 1 — Base de Dados (refinada)
+SQL
+
+-- ============================================
+-- SCHEMA REFINADO
+-- ============================================
+
+-- Fotógrafos
+CREATE TABLE photographers (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  color TEXT DEFAULT '#3B82F6',  -- cor no mapa/agenda
+  base_lat DOUBLE PRECISION DEFAULT -25.4284,
+  base_lng DOUBLE PRECISION DEFAULT -49.2733,
+  is_active BOOLEAN DEFAULT TRUE
+);
+
+INSERT INTO photographers (name, color) VALUES
+  ('Ana',    '#3B82F6'),  -- azul
+  ('Bruno',  '#10B981'),  -- verde
+  ('Carlos', '#F59E0B'),  -- amarelo
+  ('Diana',  '#EF4444'),  -- vermelho
+  ('Eduardo','#8B5CF6'); -- roxo
+
+-- Área de cobertura (polígono simplificado)
+CREATE TABLE coverage_areas (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,                    -- 'Curitiba Centro', 'Região Metropolitana'
+  area_type TEXT DEFAULT 'auto',         -- 'auto' = agendamento automático
+                                         -- 'manual' = só via secretária
+  center_lat DOUBLE PRECISION,
+  center_lng DOUBLE PRECISION,
+  radius_km DOUBLE PRECISION DEFAULT 20, -- raio de cobertura
+  is_active BOOLEAN DEFAULT TRUE
+);
+
+INSERT INTO coverage_areas (name, area_type, center_lat, center_lng, radius_km) VALUES
+  ('Curitiba - Auto',    'auto',   -25.4284, -49.2733, 15),
+  ('Região Metro',       'manual', -25.4284, -49.2733, 30);
+
+-- Pedidos
+CREATE TABLE orders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  external_id TEXT,                     -- ID do Tadabase
+  
+  -- Cliente
+  client_name TEXT NOT NULL,
+  client_phone TEXT,
+  client_email TEXT,
+  
+  -- Endereço
+  address TEXT NOT NULL,
+  address_number TEXT,
+  complement TEXT,
+  neighborhood TEXT,
+  city TEXT DEFAULT 'Curitiba',
+  zip_code TEXT,
+  
+  -- Coordenadas
+  lat DOUBLE PRECISION,
+  lng DOUBLE PRECISION,
+  geocoded BOOLEAN DEFAULT FALSE,
+  geocoding_confidence NUMERIC(4,3),
+  
+  -- Imóvel
+  property_type TEXT,                   -- 'apartamento','casa','comercial'
+  property_details TEXT,
+  
+  -- Agendamento
+  status TEXT DEFAULT 'pending'
+    CHECK (status IN (
+      'pending',        -- aguardando agendamento
+      'scheduled',      -- agendado
+      'confirmed',      -- cliente confirmou
+      'in_progress',    -- fotógrafo em campo
+      'completed',      -- concluído
+      'cancelled',      -- cancelado
+      'no_show'         -- cliente não apareceu
+    )),
+  
+  source TEXT DEFAULT 'secretary'       -- 'secretary', 'client_form', 'tadabase'
+    CHECK (source IN ('secretary','client_form','tadabase','api')),
+  
+  photographer_id INTEGER REFERENCES photographers(id),
+  scheduled_date DATE,
+  scheduled_slot INTEGER CHECK (scheduled_slot BETWEEN 0 AND 9),
+  
+  estimated_duration INTEGER DEFAULT 1,  -- slots (horas)
+  priority INTEGER DEFAULT 5,            -- 1=urgente, 10=baixa
+  
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Índices
+CREATE INDEX idx_orders_status ON orders(status);
+CREATE INDEX idx_orders_schedule ON orders(scheduled_date, photographer_id, scheduled_slot);
+CREATE INDEX idx_orders_pending_geo ON orders(lat, lng) 
+  WHERE status = 'pending' AND geocoded = TRUE;
+CREATE INDEX idx_orders_scheduled ON orders(scheduled_date) 
+  WHERE status IN ('scheduled','confirmed');
+
+-- Cache de distâncias
+CREATE TABLE distance_cache (
+  origin_id UUID NOT NULL,
+  destination_id UUID NOT NULL,
+  distance_meters INTEGER,
+  duration_seconds INTEGER,
+  calculated_at TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (origin_id, destination_id)
+);
+
+-- ============================================
+-- VIEWS PARA A SECRETÁRIA
+-- ============================================
+
+-- View: Pedidos pendentes (precisam agendar)
+CREATE OR REPLACE VIEW v_pending_orders AS
+SELECT 
+  o.*,
+  -- Quantos dias esperando
+  CURRENT_DATE - o.created_at::date AS days_waiting
+FROM orders o
+WHERE o.status = 'pending'
+  AND o.geocoded = TRUE
+ORDER BY o.priority ASC, o.created_at ASC;
+
+-- View: Agenda do dia com detalhes
+CREATE OR REPLACE VIEW v_schedule_detail AS
+SELECT
+  o.scheduled_date,
+  o.scheduled_slot,
+  (8 + o.scheduled_slot) || ':00' AS horario,
+  p.id AS photographer_id,
+  p.name AS photographer_name,
+  p.color AS photographer_color,
+  o.id AS order_id,
+  o.client_name,
+  o.address,
+  o.neighborhood,
+  o.lat,
+  o.lng,
+  o.status,
+  o.estimated_duration,
+  o.property_type
+FROM orders o
+JOIN photographers p ON p.id = o.photographer_id
+WHERE o.status IN ('scheduled','confirmed','in_progress')
+  AND o.scheduled_date IS NOT NULL
+ORDER BY o.scheduled_date, p.id, o.scheduled_slot;
+
+-- ============================================
+-- FUNÇÕES AUXILIARES
+-- ============================================
+
+-- Verificar se ponto está na área de cobertura
+CREATE OR REPLACE FUNCTION check_coverage(
+  check_lat DOUBLE PRECISION,
+  check_lng DOUBLE PRECISION
+)
+RETURNS TABLE (
+  area_name TEXT,
+  area_type TEXT,
+  distance_km NUMERIC
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT 
+    ca.name,
+    ca.area_type,
+    ROUND(
+      (6371 * ACOS(
+        COS(RADIANS(check_lat)) * COS(RADIANS(ca.center_lat)) *
+        COS(RADIANS(ca.center_lng) - RADIANS(check_lng)) +
+        SIN(RADIANS(check_lat)) * SIN(RADIANS(ca.center_lat))
+      ))::NUMERIC, 2
+    ) AS distance_km
+  FROM coverage_areas ca
+  WHERE ca.is_active = TRUE
+    AND (6371 * ACOS(
+      COS(RADIANS(check_lat)) * COS(RADIANS(ca.center_lat)) *
+      COS(RADIANS(ca.center_lng) - RADIANS(check_lng)) +
+      SIN(RADIANS(check_lat)) * SIN(RADIANS(ca.center_lat))
+    )) <= ca.radius_km
+  ORDER BY distance_km;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+-- Buscar slots livres de um fotógrafo em uma data
+CREATE OR REPLACE FUNCTION get_free_slots(
+  target_date DATE,
+  photo_id INTEGER
+)
+RETURNS TABLE (
+  slot INTEGER,
+  horario TEXT,
+  is_free BOOLEAN,
+  adjacent_order_id UUID,
+  adjacent_order_lat DOUBLE PRECISION,
+  adjacent_order_lng DOUBLE PRECISION
+) AS $$
+BEGIN
+  RETURN QUERY
+  WITH all_slots AS (
+    SELECT generate_series(0, 9) AS s
+  ),
+  occupied AS (
+    SELECT 
+      o.scheduled_slot AS s,
+      o.id,
+      o.lat,
+      o.lng,
+      o.estimated_duration
+    FROM orders o
+    WHERE o.scheduled_date = target_date
+      AND o.photographer_id = photo_id
+      AND o.status IN ('scheduled','confirmed')
+  )
+  SELECT
+    a.s AS slot,
+    LPAD((8 + a.s)::TEXT, 2, '0') || ':00' AS horario,
+    occ.id IS NULL AS is_free,
+    -- Pegar o agendamento do slot anterior ou posterior (para calcular distância)
+    COALESCE(
+      (SELECT id FROM occupied WHERE s = a.s - 1 LIMIT 1),
+      (SELECT id FROM occupied WHERE s = a.s + 1 LIMIT 1)
+    ) AS adjacent_order_id,
+    COALESCE(
+      (SELECT lat FROM occupied WHERE s = a.s - 1 LIMIT 1),
+      (SELECT lat FROM occupied WHERE s = a.s + 1 LIMIT 1)
+    ) AS adjacent_order_lat,
+    COALESCE(
+      (SELECT lng FROM occupied WHERE s = a.s - 1 LIMIT 1),
+      (SELECT lng FROM occupied WHERE s = a.s + 1 LIMIT 1)
+    ) AS adjacent_order_lng
+  FROM all_slots a
+  LEFT JOIN occupied occ ON occ.s = a.s
+  ORDER BY a.s;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+-- Buscar os melhores slots para um endereço (para o cliente)
+CREATE OR REPLACE FUNCTION find_best_slots(
+  target_lat DOUBLE PRECISION,
+  target_lng DOUBLE PRECISION,
+  max_distance_km DOUBLE PRECISION DEFAULT 10,
+  days_ahead INTEGER DEFAULT 14
+)
+RETURNS TABLE (
+  suggested_date DATE,
+  photographer_id INTEGER,
+  photographer_name TEXT,
+  slot INTEGER,
+  horario TEXT,
+  nearby_distance_km NUMERIC,
+  slot_score NUMERIC          -- menor = melhor
+) AS $$
+BEGIN
+  RETURN QUERY
+  WITH date_range AS (
+    SELECT generate_series(
+      CURRENT_DATE + 1,
+      CURRENT_DATE + days_ahead,
+      '1 day'::interval
+    )::date AS d
+  ),
+  all_possibilities AS (
+    SELECT
+      dr.d AS the_date,
+      p.id AS p_id,
+      p.name AS p_name,
+      gs.s AS the_slot,
+      -- Verificar se slot está livre
+      NOT EXISTS (
+        SELECT 1 FROM orders o
+        WHERE o.scheduled_date = dr.d
+          AND o.photographer_id = p.id
+          AND o.scheduled_slot = gs.s
+          AND o.status IN ('scheduled','confirmed')
+      ) AS slot_free,
+      -- Distância para o agendamento mais próximo do mesmo fotógrafo no dia
+      (
+        SELECT MIN(
+          6371 * ACOS(
+            COS(RADIANS(target_lat)) * COS(RADIANS(o2.lat)) *
+            COS(RADIANS(o2.lng) - RADIANS(target_lng)) +
+            SIN(RADIANS(target_lat)) * SIN(RADIANS(o2.lat))
+          )
+        )
+        FROM orders o2
+        WHERE o2.scheduled_date = dr.d
+          AND o2.photographer_id = p.id
+          AND o2.status IN ('scheduled','confirmed')
+          AND o2.geocoded = TRUE
+      ) AS nearest_km,
+      -- Contar agendamentos no dia
+      (
+        SELECT COUNT(*)
+        FROM orders o3
+        WHERE o3.scheduled_date = dr.d
+          AND o3.photographer_id = p.id
+          AND o3.status IN ('scheduled','confirmed')
+      ) AS day_count
+    FROM date_range dr
+    CROSS JOIN photographers p
+    CROSS JOIN (SELECT generate_series(0, 9) AS s) gs
+    WHERE p.is_active = TRUE
+  )
+  SELECT
+    ap.the_date,
+    ap.p_id,
+    ap.p_name,
+    ap.the_slot,
+    LPAD((8 + ap.the_slot)::TEXT, 2, '0') || ':00',
+    ROUND(COALESCE(ap.nearest_km, 999)::NUMERIC, 2),
+    -- Score: combinar distância + posição na agenda
+    ROUND((
+      COALESCE(ap.nearest_km, 50) * 1.0 +            -- distância pesa
+      ABS(ap.the_slot - 4) * 0.5 +                     -- preferir meio do dia
+      (ap.the_date - CURRENT_DATE) * 0.3 +             -- preferir mais cedo
+      CASE WHEN ap.day_count = 0 THEN 20 ELSE 0 END    -- penalizar dia vazio
+    )::NUMERIC, 2)
+  FROM all_possibilities ap
+  WHERE ap.slot_free = TRUE
+    AND (ap.nearest_km IS NULL OR ap.nearest_km <= max_distance_km)
+  ORDER BY 7 ASC  -- score
+  LIMIT 20;
+END;
+$$ LANGUAGE plpgsql STABLE;
+FASE 2 — Tela da Secretária
+2A. API — Visão Geral
+TypeScript
+
+// app/api/secretary/dashboard/route.ts
+// ============================================
+// DASHBOARD DA SECRETÁRIA
+// ============================================
+
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const date = searchParams.get('date') || new Date().toISOString().split('T')[0];
+
+  // 1. Pedidos pendentes
+  const { data: pending } = await supabase
+    .from('v_pending_orders')
+    .select('*')
+    .limit(100);
+
+  // 2. Agenda do dia selecionado
+  const { data: schedule } = await supabase
+    .from('v_schedule_detail')
+    .select('*')
+    .eq('scheduled_date', date);
+
+  // 3. Montar grade 5 fotógrafos x 10 slots
+  const { data: photographers } = await supabase
+    .from('photographers')
+    .select('*')
+    .eq('is_active', true)
+    .order('id');
+
+  const grid: Record<number, Array<any>> = {};
+  
+  photographers?.forEach(p => {
+    grid[p.id] = Array.from({ length: 10 }, (_, slot) => {
+      const scheduled = schedule?.find(
+        s => s.photographer_id === p.id && s.scheduled_slot === slot
+      );
+      return {
+        slot,
+        time: `${String(8 + slot).padStart(2, '0')}:00`,
+        is_free: !scheduled,
+        order: scheduled ? {
+          id: scheduled.order_id,
+          client_name: scheduled.client_name,
+          address: scheduled.address,
+          neighborhood: scheduled.neighborhood,
+          lat: scheduled.lat,
+          lng: scheduled.lng,
+        } : null,
+      };
+    });
+  });
+
+  // 4. Resumo
+  const stats = {
+    pending_count: pending?.length || 0,
+    scheduled_today: schedule?.length || 0,
+    free_slots_today: Object.values(grid)
+      .flat()
+      .filter((s: any) => s.is_free).length,
+    photographers_count: photographers?.length || 0,
+  };
+
+  return NextResponse.json({
+    date,
+    stats,
+    pending_orders: pending || [],
+    photographers: photographers || [],
+    grid,
+  });
+}
+2B. API — Clicou em Imóvel Agendado → Mostrar Próximos Pendentes
+TypeScript
+
+// app/api/secretary/nearby-pending/route.ts
+// ============================================
+// SECRETÁRIA CLICOU EM UM AGENDADO
+// → Mostrar pendentes próximos que cabem na agenda
+// ============================================
+
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+import { getRouteDistance, haversineDistance } from '@/lib/geo-services';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const orderId = searchParams.get('order_id')!;
+  const maxKm = parseFloat(searchParams.get('max_km') || '10');
+
+  // 1. Buscar o pedido clicado (agendado)
+  const { data: clickedOrder } = await supabase
+    .from('orders')
+    .select('*')
+    .eq('id', orderId)
+    .single();
+
+  if (!clickedOrder) {
+    return NextResponse.json({ error: 'Pedido não encontrado' }, { status: 404 });
+  }
+
+  // 2. Buscar slots adjacentes livres (antes e depois)
+  const photographerId = clickedOrder.photographer_id;
+  const date = clickedOrder.scheduled_date;
+  const slot = clickedOrder.scheduled_slot;
+
+  const { data: daySchedule } = await supabase
+    .from('orders')
+    .select('id, scheduled_slot, estimated_duration')
+    .eq('scheduled_date', date)
+    .eq('photographer_id', photographerId)
+    .in('status', ['scheduled', 'confirmed'])
+    .order('scheduled_slot');
+
+  // Calcular slots livres adjacentes
+  const occupiedSlots = new Set<number>();
+  daySchedule?.forEach(o => {
+    for (let i = 0; i < o.estimated_duration; i++) {
+      occupiedSlots.add(o.scheduled_slot + i);
+    }
+  });
+
+  const freeAdjacentSlots: number[] = [];
+  // Checar slots antes
+  for (let s = slot - 1; s >= 0; s--) {
+    if (occupiedSlots.has(s)) break;
+    freeAdjacentSlots.push(s);
+  }
+  // Checar slots depois
+  const endSlot = slot + clickedOrder.estimated_duration;
+  for (let s = endSlot; s < 10; s++) {
+    if (occupiedSlots.has(s)) break;
+    freeAdjacentSlots.push(s);
+  }
+
+  // 3. Buscar pendentes próximos
+  const { data: nearbyPending } = await supabase.rpc('find_nearby_orders', {
+    ref_lat: clickedOrder.lat,
+    ref_lng: clickedOrder.lng,
+    max_distance_km: maxKm,
+    exclude_id: orderId,
+  });
+
+  // Filtrar só pendentes
+  const pendingNearby = (nearbyPending || []).filter(
+    (o: any) => o.status === 'pending'
+  );
+
+  // 4. Calcular tempo de viagem para os top 10 mais próximos
+  const withTravel = [];
+  for (const pending of pendingNearby.slice(0, 15)) {
+    // Tentar cache primeiro
+    const { data: cached } = await supabase
+      .from('distance_cache')
+      .select('duration_seconds, distance_meters')
+      .eq('origin_id', orderId)
+      .eq('destination_id', pending.id)
+      .single();
+
+    let travelMinutes: number;
+    let distanceKm: number;
+
+    if (cached) {
+      travelMinutes = Math.round(cached.duration_seconds / 60);
+      distanceKm = Math.round(cached.distance_meters / 100) / 10;
+    } else {
+      // Calcular via OSRM
+      const route = await getRouteDistance(
+        { lat: clickedOrder.lat, lng: clickedOrder.lng },
+        { lat: pending.lat, lng: pending.lng }
+      );
+
+      if (route) {
+        travelMinutes = Math.round(route.duration_seconds / 60);
+        distanceKm = Math.round(route.distance_meters / 100) / 10;
+
+        // Salvar no cache
+        await supabase.from('distance_cache').upsert({
+          origin_id: orderId,
+          destination_id: pending.id,
+          distance_meters: route.distance_meters,
+          duration_seconds: route.duration_seconds,
+        });
+      } else {
+        // Fallback haversine
+        const d = haversineDistance(
+          { lat: clickedOrder.lat, lng: clickedOrder.lng },
+          { lat: pending.lat, lng: pending.lng }
+        );
+        distanceKm = Math.round(d / 100) / 10;
+        travelMinutes = Math.round((d * 1.4) / (40000 / 60)); // 40km/h
+      }
+    }
+
+    // Verificar se cabe em algum slot adjacente livre
+    const travelSlots = travelMinutes <= 15 ? 0 : 1;
+    const totalSlots = travelSlots + (pending.estimated_duration || 1);
+    
+    const viableSlots = freeAdjacentSlots.filter(fs => {
+      // Verificar se a sequência de slots necessária está livre
+      for (let i = 0; i < totalSlots; i++) {
+        if (occupiedSlots.has(fs + i) || fs + i >= 10 || fs + i < 0) return false;
+      }
+      return true;
+    });
+
+    withTravel.push({
+      ...pending,
+      distance_km: distanceKm,
+      travel_minutes: travelMinutes,
+      travel_slots: travelSlots,
+      viable_slots: viableSlots.map(s => ({
+        slot: s,
+        time: `${String(8 + s).padStart(2, '0')}:00`,
+      })),
+      can_schedule: viableSlots.length > 0,
+    });
+  }
+
+  // Ordenar: primeiro os que cabem, depois por distância
+  withTravel.sort((a, b) => {
+    if (a.can_schedule && !b.can_schedule) return -1;
+    if (!a.can_schedule && b.can_schedule) return 1;
+    return a.distance_km - b.distance_km;
+  });
+
+  return NextResponse.json({
+    clicked_order: {
+      id: clickedOrder.id,
+      client_name: clickedOrder.client_name,
+      address: clickedOrder.address,
+      neighborhood: clickedOrder.neighborhood,
+      lat: clickedOrder.lat,
+      lng: clickedOrder.lng,
+      photographer_id: photographerId,
+      scheduled_date: date,
+      scheduled_slot: slot,
+      slot_time: `${String(8 + slot).padStart(2, '0')}:00`,
+    },
+    free_adjacent_slots: freeAdjacentSlots.map(s => ({
+      slot: s,
+      time: `${String(8 + s).padStart(2, '0')}:00`,
+    })),
+    nearby_pending: withTravel,
+  });
+}
+2C. API — Clicou em Imóvel Pendente → Onde encaixar?
+TypeScript
+
+// app/api/secretary/where-to-fit/route.ts
+// ============================================
+// SECRETÁRIA CLICOU EM UM PENDENTE
+// → Mostrar onde encaixar na agenda (qual dia/fotógrafo/slot)
+// ============================================
+
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+import { haversineDistance } from '@/lib/geo-services';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const orderId = searchParams.get('order_id')!;
+  const daysAhead = parseInt(searchParams.get('days') || '7');
+  const maxKm = parseFloat(searchParams.get('max_km') || '10');
+
+  // 1. Buscar o pedido pendente
+  const { data: pendingOrder } = await supabase
+    .from('orders')
+    .select('*')
+    .eq('id', orderId)
+    .single();
+
+  if (!pendingOrder) {
+    return NextResponse.json({ error: 'Pedido não encontrado' }, { status: 404 });
+  }
+
+  // 2. Buscar usando a função SQL que já calcula tudo
+  const { data: bestSlots } = await supabase.rpc('find_best_slots', {
+    target_lat: pendingOrder.lat,
+    target_lng: pendingOrder.lng,
+    max_distance_km: maxKm,
+    days_ahead: daysAhead,
+  });
+
+  // 3. Agrupar por dia para visualização
+  const byDay: Record<string, any[]> = {};
+  (bestSlots || []).forEach((slot: any) => {
+    const day = slot.suggested_date;
+    if (!byDay[day]) byDay[day] = [];
+    byDay[day].push({
+      photographer_id: slot.photographer_id,
+      photographer_name: slot.photographer_name,
+      slot: slot.slot,
+      time: slot.horario,
+      nearby_distance_km: slot.nearby_distance_km,
+      score: slot.slot_score,
+    });
+  });
+
+  // 4. Também buscar pendentes próximos (para agrupar)
+  const { data: nearbyPending } = await supabase.rpc('find_nearby_orders', {
+    ref_lat: pendingOrder.lat,
+    ref_lng: pendingOrder.lng,
+    max_distance_km: maxKm,
+    exclude_id: orderId,
+  });
+
+  const otherPending = (nearbyPending || []).filter(
+    (o: any) => o.status === 'pending'
+  );
+
+  return NextResponse.json({
+    pending_order: {
+      id: pendingOrder.id,
+      client_name: pendingOrder.client_name,
+      address: pendingOrder.address,
+      neighborhood: pendingOrder.neighborhood,
+      lat: pendingOrder.lat,
+      lng: pendingOrder.lng,
+      days_waiting: Math.floor(
+        (Date.now() - new Date(pendingOrder.created_at).getTime()) / 86400000
+      ),
+    },
+    best_options: byDay,
+    other_pending_nearby: otherPending.slice(0, 10),
+    recommendation: bestSlots?.[0] ? {
+      date: bestSlots[0].suggested_date,
+      photographer: bestSlots[0].photographer_name,
+      time: bestSlots[0].horario,
+      reason: bestSlots[0].nearby_distance_km < 999
+        ? `A ${bestSlots[0].nearby_distance_km}km de outro agendamento`
+        : 'Dia livre - pode iniciar nova rota',
+    } : null,
+  });
+}
+2D. API — Confirmar Agendamento
+TypeScript
+
+// app/api/secretary/assign/route.ts
+// ============================================
+// CONFIRMAR AGENDAMENTO (secretária ou automático)
+// ============================================
+
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+import { updateTadabaseRecord } from '@/lib/tadabase-api';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+export async function POST(req: NextRequest) {
+  try {
+    const { order_id, photographer_id, date, slot } = await req.json();
+
+    // 1. Validar que slot está livre
+    const { data: existing } = await supabase
+      .from('orders')
+      .select('id')
+      .eq('scheduled_date', date)
+      .eq('photographer_id', photographer_id)
+      .eq('scheduled_slot', slot)
+      .in('status', ['scheduled', 'confirmed'])
+      .single();
+
+    if (existing) {
+      return NextResponse.json(
+        { error: 'Slot já ocupado' },
+        { status: 409 }
+      );
+    }
+
+    // 2. Atualizar o pedido
+    const { data: updated, error } = await supabase
+      .from('orders')
+      .update({
+        status: 'scheduled',
+        photographer_id,
+        scheduled_date: date,
+        scheduled_slot: slot,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', order_id)
+      .select(`*, photographers(name)`)
+      .single();
+
+    if (error) throw error;
+
+    // 3. Se veio do Tadabase, atualizar lá também
+    if (updated.external_id) {
+      const slotTime = `${String(8 + slot).padStart(2, '0')}:00`;
+      await updateTadabaseRecord(updated.external_id, {
+        field_status: 'Agendado',
+        field_fotografo: (updated as any).photographers?.name || '',
+        field_data_agendamento: date,
+        field_horario: slotTime,
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      order: updated,
+      message: `Agendado: ${date} às ${String(8 + slot).padStart(2, '0')}:00`,
+    });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+2E. Componente React — Tela da Secretária
+React
+
+// components/SecretaryDashboard.tsx
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+
+// ============================================
+// TIPOS
+// ============================================
+
+interface Order {
+  id: string;
+  client_name: string;
+  address: string;
+  neighborhood: string;
+  lat: number;
+  lng: number;
+  status: string;
+  priority: number;
+  days_waiting?: number;
+  distance_km?: number;
+  travel_minutes?: number;
+  can_schedule?: boolean;
+  viable_slots?: Array<{ slot: number; time: string }>;
+}
+
+interface Photographer {
+  id: number;
+  name: string;
+  color: string;
+}
+
+interface SlotData {
+  slot: number;
+  time: string;
+  is_free: boolean;
+  order: Order | null;
+}
+
+// ============================================
+// COMPONENTE PRINCIPAL
+// ============================================
+
+export default function SecretaryDashboard() {
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [photographers, setPhotographers] = useState<Photographer[]>([]);
+  const [grid, setGrid] = useState<Record<number, SlotData[]>>({});
+  const [pendingOrders, setPendingOrders] = useState<Order[]>([]);
+  const [stats, setStats] = useState<any>({});
+
+  // Painéis contextuais
+  const [selectedScheduled, setSelectedScheduled] = useState<Order | null>(null);
+  const [selectedPending, setSelectedPending] = useState<Order | null>(null);
+  const [nearbyResults, setNearbyResults] = useState<any>(null);
+  const [fitResults, setFitResults] = useState<any>(null);
+
+  // Modal de confirmação
+  const [assignModal, setAssignModal] = useState<{
+    order: Order;
+    photographer_id: number;
+    date: string;
+    slot: number;
+  } | null>(null);
+
+  // ---- CARREGAR DADOS ----
+  const loadDashboard = useCallback(async () => {
+    const res = await fetch(`/api/secretary/dashboard?date=${date}`);
+    const data = await res.json();
+    setPhotographers(data.photographers);
+    setGrid(data.grid);
+    setPendingOrders(data.pending_orders);
+    setStats(data.stats);
+  }, [date]);
+
+  useEffect(() => { loadDashboard(); }, [loadDashboard]);
+
+  // ---- CLICOU EM AGENDADO ----
+  const handleClickScheduled = async (order: Order) => {
+    setSelectedScheduled(order);
+    setSelectedPending(null);
+    setFitResults(null);
+
+    const res = await fetch(
+      `/api/secretary/nearby-pending?order_id=${order.id}&max_km=10`
+    );
+    const data = await res.json();
+    setNearbyResults(data);
+  };
+
+  // ---- CLICOU EM PENDENTE ----
+  const handleClickPending = async (order: Order) => {
+    setSelectedPending(order);
+    setSelectedScheduled(null);
+    setNearbyResults(null);
+
+    const res = await fetch(
+      `/api/secretary/where-to-fit?order_id=${order.id}&days=7&max_km=10`
+    );
+    const data = await res.json();
+    setFitResults(data);
+  };
+
+  // ---- CONFIRMAR AGENDAMENTO ----
+  const handleAssign = async () => {
+    if (!assignModal) return;
+
+    const res = await fetch('/api/secretary/assign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        order_id: assignModal.order.id,
+        photographer_id: assignModal.photographer_id,
+        date: assignModal.date,
+        slot: assignModal.slot,
+      }),
+    });
+
+    const data = await res.json();
+    if (data.success) {
+      setAssignModal(null);
+      setNearbyResults(null);
+      setFitResults(null);
+      setSelectedScheduled(null);
+      setSelectedPending(null);
+      await loadDashboard(); // Recarregar tudo
+    } else {
+      alert(`Erro: ${data.error}`);
+    }
+  };
+
+  // ---- SLOTS ----
+  const slotTimes = Array.from({ length: 10 }, (_, i) => ({
+    num: i,
+    time: `${String(8 + i).padStart(2, '0')}:00`,
+  }));
+
+  return (
+    <div className="flex h-screen bg-gray-50">
+      {/* ======================================== */}
+      {/* PAINEL ESQUERDO — Lista de Pendentes     */}
+      {/* ======================================== */}
+      <div className="w-80 border-r bg-white overflow-y-auto flex-shrink-0">
+        <div className="p-4 border-b bg-orange-50">
+          <h2 className="font-bold text-lg">
+            📋 Pendentes ({stats.pending_count || 0})
+          </h2>
+          <p className="text-sm text-gray-500">
+            Clique para ver onde encaixar
+          </p>
+        </div>
+
+        <div className="divide-y">
+          {pendingOrders.map(order => (
+            <button
+              key={order.id}
+              onClick={() => handleClickPending(order)}
+              className={`w-full text-left p-3 hover:bg-blue-50 transition
+                ${selectedPending?.id === order.id ? 'bg-blue-100 border-l-4 border-blue-500' : ''}
+              `}
+            >
+              <div className="font-medium text-sm">{order.client_name}</div>
+              <div className="text-xs text-gray-500">{order.address}</div>
+              <div className="text-xs text-gray-400 mt-1">
+                {order.neighborhood} •
+                Prioridade {order.priority} •
+                {order.days_waiting}d esperando
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ======================================== */}
+      {/* CENTRO — Grade de Agenda                  */}
+      {/* ======================================== */}
+      <div className="flex-1 overflow-auto">
+        {/* Header com data */}
+        <div className="sticky top-0 bg-white border-b p-4 flex items-center gap-4 z-10">
+          <h1 className="text-xl font-bold">📸 Agenda</h1>
+          <button
+            onClick={() => {
+              const d = new Date(date);
+              d.setDate(d.getDate() - 1);
+              setDate(d.toISOString().split('T')[0]);
+            }}
+            className="px-2 py-1 border rounded"
+          >
+            ◀
+          </button>
+          <input
+            type="date"
+            value={date}
+            onChange={e => setDate(e.target.value)}
+            className="border rounded px-3 py-1"
+          />
+          <button
+            onClick={() => {
+              const d = new Date(date);
+              d.setDate(d.getDate() + 1);
+              setDate(d.toISOString().split('T')[0]);
+            }}
+            className="px-2 py-1 border rounded"
+          >
+            ▶
+          </button>
+          <span className="text-sm text-gray-500">
+            {new Date(date + 'T12:00').toLocaleDateString('pt-BR', {
+              weekday: 'long',
+              day: 'numeric',
+              month: 'long',
+            })}
+          </span>
+          <div className="ml-auto flex gap-3 text-sm">
+            <span className="bg-green-100 px-2 py-1 rounded">
+              ✅ {stats.scheduled_today || 0} agendados
+            </span>
+            <span className="bg-gray-100 px-2 py-1 rounded">
+              🕐 {stats.free_slots_today || 0} livres
+            </span>
+          </div>
+        </div>
+
+        {/* Grid */}
+        <div className="p-4">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr>
+                <th className="border p-2 bg-gray-100 w-16">Hora</th>
+                {photographers.map(p => (
+                  <th
+                    key={p.id}
+                    className="border p-2"
+                    style={{ backgroundColor: p.color + '15' }}
+                  >
+                    <span
+                      className="inline-block w-3 h-3 rounded-full mr-1"
+                      style={{ backgroundColor: p.color }}
+                    />
+                    {p.name}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {slotTimes.map(({ num, time }) => (
+                <tr key={num}>
+                  <td className="border p-2 text-center font-mono text-sm font-bold bg-gray-50">
+                    {time}
+                  </td>
+                  {photographers.map(p => {
+                    const slotData = grid[p.id]?.[num];
+                    const hasOrder = slotData && !slotData.is_free && slotData.order;
+
+                    // Highlight: se veio do nearbyResults, mostrar slots viáveis
+                    const isHighlighted = nearbyResults?.free_adjacent_slots?.some(
+                      (fs: any) => fs.slot === num
+                    ) && nearbyResults?.clicked_order?.photographer_id === p.id;
+
+                    return (
+                      <td
+                        key={`${p.id}-${num}`}
+                        className={`border p-2 min-w-[180px] h-16 align-top cursor-pointer
+                          transition-all duration-200
+                          ${hasOrder
+                            ? 'bg-green-50 hover:bg-green-100'
+                            : isHighlighted
+                              ? 'bg-yellow-100 border-yellow-400 border-2 animate-pulse'
+                              : 'bg-white hover:bg-gray-50'
+                          }
+                          ${selectedScheduled?.id === slotData?.order?.id
+                            ? 'ring-2 ring-blue-500'
+                            : ''
+                          }
+                        `}
+                        onClick={() => {
+                          if (hasOrder) {
+                            handleClickScheduled(slotData!.order!);
+                          } else if (selectedPending || (nearbyResults && isHighlighted)) {
+                            // Clicar em slot vazio = tentar agendar o pendente selecionado aqui
+                            const orderToAssign = selectedPending ||
+                              nearbyResults?.nearby_pending?.[0];
+                            if (orderToAssign) {
+                              setAssignModal({
+                                order: orderToAssign,
+                                photographer_id: p.id,
+                                date,
+                                slot: num,
+                              });
+                            }
+                          }
+                        }}
+                        // Drop zone para drag & drop
+                        onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('bg-blue-50'); }}
+                        onDragLeave={e => { e.currentTarget.classList.remove('bg-blue-50'); }}
+                        onDrop={e => {
+                          e.preventDefault();
+                          e.currentTarget.classList.remove('bg-blue-50');
+                          const dragOrderId = e.dataTransfer.getData('order_id');
+                          const dragOrder = pendingOrders.find(o => o.id === dragOrderId);
+                          if (dragOrder && slotData?.is_free) {
+                            setAssignModal({
+                              order: dragOrder,
+                              photographer_id: p.id,
+                              date,
+                              slot: num,
+                            });
+                          }
+                        }}
+                      >
+                        {hasOrder ? (
+                          <div className="text-xs">
+                            <div className="font-semibold">
+                              {slotData!.order!.client_name}
+                            </div>
+                            <div className="text-gray-500 truncate">
+                              {slotData!.order!.neighborhood || slotData!.order!.address}
+                            </div>
+                          </div>
+                        ) : isHighlighted ? (
+                          <div className="text-xs text-yellow-700 font-medium">
+                            ⭐ Encaixar aqui
+                          </div>
+                        ) : (
+                          <div className="text-xs text-gray-300">Livre</div>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ======================================== */}
+      {/* PAINEL DIREITO — Resultados contextuais   */}
+      {/* ======================================== */}
+      <div className="w-96 border-l bg-white overflow-y-auto flex-shrink-0">
+        {/* --- Clicou em AGENDADO: mostrar pendentes próximos --- */}
+        {nearbyResults && (
+          <div>
+            <div className="p-4 border-b bg-green-50">
+              <h3 className="font-bold">
+                📍 Próximos de "{nearbyResults.clicked_order.client_name}"
+              </h3>
+              <p className="text-xs text-gray-500">
+                {nearbyResults.clicked_order.address}
+              </p>
+              <p className="text-xs mt-1">
+                Slots livres adjacentes:{' '}
+                {nearbyResults.free_adjacent_slots.map((s: any) => s.time).join(', ') || 'Nenhum'}
+              </p>
+            </div>
+
+            <div className="divide-y">
+              {nearbyResults.nearby_pending.map((order: any) => (
+                <div
+                  key={order.id}
+                  className={`p-3 ${order.can_schedule ? 'bg-white' : 'bg-gray-50 opacity-60'}`}
+                >
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <div className="font-medium text-sm">{order.client_name}</div>
+                      <div className="text-xs text-gray-500">{order.address}</div>
+                    </div>
+                    <div className="text-right text-xs">
+                      <div className="font-bold text-blue-600">
+                        {order.distance_km} km
+                      </div>
+                      <div className="text-gray-400">
+                        ~{order.travel_minutes} min
+                      </div>
+                    </div>
+                  </div>
+
+                  {order.can_schedule && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {order.viable_slots.map((vs: any) => (
+                        <button
+                          key={vs.slot}
+                          onClick={() => setAssignModal({
+                            order,
+                            photographer_id: nearbyResults.clicked_order.photographer_id,
+                            date,
+                            slot: vs.slot,
+                          })}
+                          className="text-xs bg-green-500 text-white px-2 py-1 
+                                     rounded hover:bg-green-600"
+                        >
+                          {vs.time}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {!order.can_schedule && (
+                    <div className="mt-1 text-xs text-red-400">
+                      ❌ Não cabe nos slots adjacentes
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* --- Clicou em PENDENTE: mostrar onde encaixar --- */}
+        {fitResults && (
+          <div>
+            <div className="p-4 border-b bg-orange-50">
+              <h3 className="font-bold">
+                🔍 Onde encaixar "{fitResults.pending_order.client_name}"?
+              </h3>
+              <p className="text-xs text-gray-500">
+                {fitResults.pending_order.address}
+              </p>
+              {fitResults.recommendation && (
+                <div className="mt-2 p-2 bg-green-100 rounded text-sm">
+                  💡 <b>Sugestão:</b> {fitResults.recommendation.date} às{' '}
+                  {fitResults.recommendation.time} com {fitResults.recommendation.photographer}
+                  <br />
+                  <span className="text-xs">{fitResults.recommendation.reason}</span>
+                </div>
+              )}
+            </div>
+
+            {Object.entries(fitResults.best_options).map(([day, slots]: [string, any]) => (
+              <div key={day} className="border-b">
+                <div className="p-2 bg-gray-50 font-medium text-sm">
+                  📅 {new Date(day + 'T12:00').toLocaleDateString('pt-BR', {
+                    weekday: 'short', day: 'numeric', month: 'short',
+                  })}
+                </div>
+                <div className="p-2 flex flex-wrap gap-1">
+                  {(slots as any[]).map((s, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setAssignModal({
+                        order: fitResults.pending_order,
+                        photographer_id: s.photographer_id,
+                        date: day,
+                        slot: s.slot,
+                      })}
+                      className="text-xs border rounded px-2 py-1 hover:bg-blue-50
+                                 flex items-center gap-1"
+                    >
+                      <span>{s.time}</span>
+                      <span className="text-gray-400">{s.photographer_name}</span>
+                      {s.nearby_distance_km < 999 && (
+                        <span className="text-green-600 font-bold">
+                          {s.nearby_distance_km}km
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+
+            {fitResults.other_pending_nearby?.length > 0 && (
+              <div className="p-3 border-t bg-yellow-50">
+                <h4 className="text-sm font-medium mb-1">
+                  📦 Outros pendentes próximos (agrupar?)
+                </h4>
+                {fitResults.other_pending_nearby.map((o: any) => (
+                  <div key={o.id} className="text-xs text-gray-600 py-1">
+                    • {o.client_name} — {o.neighborhood} ({o.distance_km}km)
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Nenhuma seleção */}
+        {!nearbyResults && !fitResults && (
+          <div className="p-8 text-center text-gray-400">
+            <div className="text-4xl mb-3">👆</div>
+            <p>Clique em um imóvel agendado ou pendente para ver opções</p>
+          </div>
+        )}
+      </div>
+
+      {/* ======================================== */}
+      {/* MODAL DE CONFIRMAÇÃO                      */}
+      {/* ======================================== */}
+      {assignModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
+            <h3 className="text-lg font-bold mb-4">✅ Confirmar Agendamento</h3>
+            
+            <div className="space-y-3 mb-6">
+              <div className="flex justify-between">
+                <span className="text-gray-500">Cliente:</span>
+                <span className="font-medium">{assignModal.order.client_name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Endereço:</span>
+                <span className="font-medium text-sm">{assignModal.order.address}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Data:</span>
+                <span className="font-medium">
+                  {new Date(assignModal.date + 'T12:00').toLocaleDateString('pt-BR')}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Horário:</span>
+                <span className="font-medium text-lg">
+                  {String(8 + assignModal.slot).padStart(2, '0')}:00
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Fotógrafo:</span>
+                <span className="font-medium">
+                  {photographers.find(p => p.id === assignModal.photographer_id)?.name}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setAssignModal(null)}
+                className="flex-1 px-4 py-2 border rounded hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleAssign}
+                className="flex-1 px-4 py-2 bg-green-600 text-white rounded 
+                           hover:bg-green-700 font-medium"
+              >
+                Confirmar ✓
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+FASE 3 — Formulário do Cliente (Passivo)
+3A. API — Verificar Cobertura + Sugerir Datas
+TypeScript
+
+// app/api/client/check-availability/route.ts
+// ============================================
+// CLIENTE: verificar cobertura e obter opções
+// ============================================
+
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+import { geocodeAddress } from '@/lib/geo-services';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+export async function POST(req: NextRequest) {
+  try {
+    const { address, neighborhood, city, zip_code } = await req.json();
+
+    if (!address) {
+      return NextResponse.json(
+        { error: 'Endereço é obrigatório' },
+        { status: 400 }
+      );
+    }
+
+    // 1. Geocoding
+    const fullAddress = [address, neighborhood, city || 'Curitiba']
+      .filter(Boolean)
+      .join(', ');
+
+    const geo = await geocodeAddress(fullAddress);
+
+    if (!geo) {
+      return NextResponse.json({
+        status: 'geocoding_failed',
+        message: 'Não conseguimos localizar o endereço. Verifique e tente novamente.',
+        redirect: 'whatsapp',
+      });
+    }
+
+    // 2. Verificar cobertura
+    const { data: coverage } = await supabase.rpc('check_coverage', {
+      check_lat: geo.lat,
+      check_lng: geo.lng,
+    });
+
+    if (!coverage || coverage.length === 0) {
+      // FORA DE COBERTURA
+      return NextResponse.json({
+        status: 'out_of_coverage',
+        message: 'Seu endereço está fora da nossa área de agendamento online.',
+        redirect: 'whatsapp',
+        whatsapp_link: `https://wa.me/5541999999999?text=${encodeURIComponent(
+          `Olá! Gostaria de agendar um serviço fotográfico.\nEndereço: ${fullAddress}`
+        )}`,
+        coordinates: { lat: geo.lat, lng: geo.lng },
+      });
+    }
+
+    const bestCoverage = coverage[0];
+
+    if (bestCoverage.area_type === 'manual') {
+      // NA ÁREA, MAS SÓ AGENDAMENTO MANUAL
+      return NextResponse.json({
+        status: 'manual_only',
+        message: 'Seu endereço está na nossa área, mas o agendamento é feito pela nossa equipe.',
+        redirect: 'whatsapp',
+        whatsapp_link: `https://wa.me/5541999999999?text=${encodeURIComponent(
+          `Olá! Gostaria de agendar um serviço fotográfico.\nEndereço: ${fullAddress}`
+        )}`,
+        coordinates: { lat: geo.lat, lng: geo.lng },
+      });
+    }
+
+    // 3. NA ÁREA AUTO — Buscar melhores opções
+    const { data: bestSlots } = await supabase.rpc('find_best_slots', {
+      target_lat: geo.lat,
+      target_lng: geo.lng,
+      max_distance_km: 10,
+      days_ahead: 14,
+    });
+
+    // 4. Formatar opções para o cliente
+    //    OPÇÃO A: Ofertar os melhores (nosso interesse)
+    const topSuggestions = (bestSlots || []).slice(0, 6);
+
+    //    OPÇÃO B: Todos os slots viáveis agrupados por dia
+    const allViableByDay: Record<string, string[]> = {};
+    (bestSlots || []).forEach((s: any) => {
+      const day = s.suggested_date;
+      if (!allViableByDay[day]) allViableByDay[day] = [];
+      allViableByDay[day].push(s.horario);
+    });
+
+    return NextResponse.json({
+      status: 'available',
+      message: 'Ótimo! Encontramos horários disponíveis para você.',
+      coordinates: { lat: geo.lat, lng: geo.lng },
+      coverage_area: bestCoverage.area_name,
+
+      // OPÇÃO A: Melhores sugestões (recomendado!)
+      suggested_slots: topSuggestions.map((s: any) => ({
+        date: s.suggested_date,
+        date_formatted: new Date(s.suggested_date + 'T12:00').toLocaleDateString('pt-BR', {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+        }),
+        time: s.horario,
+        score: s.slot_score,
+        // Não expor photographer_id/name ao cliente
+        _internal: {
+          photographer_id: s.photographer_id,
+          slot: s.slot,
+        },
+      })),
+
+      // OPÇÃO B: Dias disponíveis com horários
+      available_days: Object.entries(allViableByDay).map(([day, times]) => ({
+        date: day,
+        date_formatted: new Date(day + 'T12:00').toLocaleDateString('pt-BR', {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+        }),
+        available_times: [...new Set(times)].sort(),
+      })),
+    });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+3B. API — Cliente Confirma Escolha
+TypeScript
+
+// app/api/client/book/route.ts
+// ============================================
+// CLIENTE CONFIRMA O AGENDAMENTO
+// ============================================
+
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+import { geocodeAddress } from '@/lib/geo-services';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const {
+      client_name,
+      client_phone,
+      client_email,
+      address,
+      neighborhood,
+      city,
+      property_type,
+      // Opção A: slot pré-selecionado
+      selected_date,
+      selected_time,
+      photographer_id,
+      slot,
+      // Coordenadas (já calculadas)
+      lat,
+      lng,
+    } = body;
+
+    // Validações
+    if (!client_name || !client_phone || !address) {
+      return NextResponse.json(
+        { error: 'Nome, telefone e endereço são obrigatórios' },
+        { status: 400 }
+      );
+    }
+
+    // Verificar novamente se slot está livre (race condition)
+    const { data: conflict } = await supabase
+      .from('orders')
+      .select('id')
+      .eq('scheduled_date', selected_date)
+      .eq('photographer_id', photographer_id)
+      .eq('scheduled_slot', slot)
+      .in('status', ['scheduled', 'confirmed'])
+      .single();
+
+    if (conflict) {
+      return NextResponse.json({
+        error: 'slot_taken',
+        message: 'Este horário acabou de ser reservado. Por favor, escolha outro.',
+      }, { status: 409 });
+    }
+
+    // Criar pedido já agendado
+    const { data: order, error } = await supabase
+      .from('orders')
+      .insert({
+        client_name,
+        client_phone,
+        client_email,
+        address,
+        neighborhood,
+        city: city || 'Curitiba',
+        property_type,
+        lat,
+        lng,
+        geocoded: true,
+        source: 'client_form',
+        status: 'scheduled',
+        photographer_id,
+        scheduled_date: selected_date,
+        scheduled_slot: slot,
+        estimated_duration: 1,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return NextResponse.json({
+      success: true,
+      booking: {
+        id: order.id,
+        date: selected_date,
+        time: selected_time,
+        date_formatted: new Date(selected_date + 'T12:00').toLocaleDateString('pt-BR', {
+          weekday: 'long', day: 'numeric', month: 'long',
+        }),
+        message: `Agendamento confirmado para ${selected_date} às ${selected_time}!`,
+      },
+    });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+3C. Formulário do Cliente (React)
+React
+
+// components/ClientBookingForm.tsx
+'use client';
+
+import { useState } from 'react';
+
+type Step = 'address' | 'loading' | 'out_of_coverage' | 'choose_time' | 'details' | 'confirmed';
+
+interface Suggestion {
+  date: string;
+  date_formatted: string;
+  time: string;
+  _internal: { photographer_id: number; slot: number };
+}
+
+interface AvailableDay {
+  date: string;
+  date_formatted: string;
+  available_times: string[];
+}
+
+export default function ClientBookingForm() {
+  const [step, setStep] = useState<Step>('address');
+
+  // Address form
+  const [address, setAddress] = useState('');
+  const [addressNumber, setAddressNumber] = useState('');
+  const [neighborhood, setNeighborhood] = useState('');
+  const [city, setCity] = useState('Curitiba');
+
+  // Results
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [availableDays, setAvailableDays] = useState<AvailableDay[]>([]);
+  const [coordinates, setCoordinates] = useState<{ lat: number; lng: number } | null>(null);
+  const [whatsappLink, setWhatsappLink] = useState('');
+
+  // Selection
+  const [selectedSlot, setSelectedSlot] = useState<Suggestion | null>(null);
+  const [mode, setMode] = useState<'suggestions' | 'calendar'>('suggestions');
+
+  // Client details
+  const [clientName, setClientName] = useState('');
+  const [clientPhone, setClientPhone] = useState('');
+  const [clientEmail, setClientEmail] = useState('');
+  const [propertyType, setPropertyType] = useState('');
+
+  // Confirmation
+  const [booking, setBooking] = useState<any>(null);
+  const [error, setError] = useState('');
+
+  // ---- STEP 1: Verificar endereço ----
+  const handleCheckAddress = async () => {
+    setStep('loading');
+    setError('');
+
+    try {
+      const res = await fetch('/api/client/check-availability', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          address: `${address}, ${addressNumber}`,
+          neighborhood,
+          city,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.status === 'available') {
+        setSuggestions(data.suggested_slots || []);
+        setAvailableDays(data.available_days || []);
+        setCoordinates(data.coordinates);
+        setStep('choose_time');
+      } else {
+        setWhatsappLink(data.whatsapp_link || '');
+        setStep('out_of_coverage');
+      }
+    } catch (err) {
+      setError('Erro ao verificar endereço. Tente novamente.');
+      setStep('address');
+    }
+  };
+
+  // ---- STEP 3: Confirmar agendamento ----
+  const handleBook = async () => {
+    if (!selectedSlot || !clientName || !clientPhone) {
+      setError('Preencha todos os campos');
+      return;
+    }
+
+    setStep('loading');
+
+    try {
+      const res = await fetch('/api/client/book', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_name: clientName,
+          client_phone: clientPhone,
+          client_email: clientEmail,
+          address: `${address}, ${addressNumber}`,
+          neighborhood,
+          city,
+          property_type: propertyType,
+          selected_date: selectedSlot.date,
+          selected_time: selectedSlot.time,
+          photographer_id: selectedSlot._internal.photographer_id,
+          slot: selectedSlot._internal.slot,
+          lat: coordinates?.lat,
+          lng: coordinates?.lng,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        setBooking(data.booking);
+        setStep('confirmed');
+      } else if (data.error === 'slot_taken') {
+        setError(data.message);
+        setStep('choose_time');
+        // Recarregar opções
+        handleCheckAddress();
+      } else {
+        setError(data.error);
+        setStep('details');
+      }
+    } catch (err) {
+      setError('Erro ao confirmar. Tente novamente.');
+      setStep('details');
+    }
+  };
+
+  return (
+    <div className="max-w-lg mx-auto p-6">
+      <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white p-6">
+          <h1 className="text-2xl font-bold">📸 Agendar Fotografia</h1>
+          <p className="text-blue-100 mt-1">Agende online em poucos passos</p>
+        </div>
+
+        <div className="p-6">
+          {/* Progress */}
+          <div className="flex items-center gap-2 mb-6">
+            {['Endereço', 'Horário', 'Dados', 'Confirmação'].map((label, i) => {
+              const stepNum = i + 1;
+              const currentNum = step === 'address' ? 1 : step === 'choose_time' ? 2 :
+                step === 'details' ? 3 : step === 'confirmed' ? 4 : 0;
+              return (
+                <div key={label} className="flex items-center gap-2">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm
+                    ${stepNum <= currentNum ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}>
+                    {stepNum}
+                  </div>
+                  <span className="text-xs text-gray-500 hidden sm:inline">{label}</span>
+                  {i < 3 && <div className="w-4 h-px bg-gray-300" />}
+                </div>
+              );
+            })}
+          </div>
+
+          {error && (
+            <div className="bg-red-50 text-red-700 p-3 rounded mb-4 text-sm">
+              {error}
+            </div>
+          )}
+
+          {/* ===== STEP: ENDEREÇO ===== */}
+          {step === 'address' && (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Endereço (Rua)</label>
+                <input
+                  type="text"
+                  value={address}
+                  onChange={e => setAddress(e.target.value)}
+                  placeholder="Rua XV de Novembro"
+                  className="w-full border rounded-lg px-4 py-3"
+                />
+              </div>
+              <div className="flex gap-3">
+                <div className="w-1/3">
+                  <label className="block text-sm font-medium mb-1">Número</label>
+                  <input
+                    type="text"
+                    value={addressNumber}
+                    onChange={e => setAddressNumber(e.target.value)}
+                    placeholder="1234"
+                    className="w-full border rounded-lg px-4 py-3"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-sm font-medium mb-1">Bairro</label>
+                  <input
+                    type="text"
+                    value={neighborhood}
+                    onChange={e => setNeighborhood(e.target.value)}
+                    placeholder="Centro"
+                    className="w-full border rounded-lg px-4 py-3"
+                  />
+                </div>
+              </div>
+              <button
+                onClick={handleCheckAddress}
+                disabled={!address}
+                className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium
+                           hover:bg-blue-700 disabled:opacity-50"
+              >
+                Verificar Disponibilidade →
+              </button>
+            </div>
+          )}
+
+          {/* ===== STEP: LOADING ===== */}
+          {step === 'loading' && (
+            <div className="text-center py-12">
+              <div className="animate-spin w-12 h-12 border-4 border-blue-200 
+                              border-t-blue-600 rounded-full mx-auto mb-4" />
+              <p className="text-gray-500">Verificando disponibilidade...</p>
+            </div>
+          )}
+
+          {/* ===== STEP: FORA DE COBERTURA ===== */}
+          {step === 'out_of_coverage' && (
+            <div className="text-center py-8">
+              <div className="text-5xl mb-4">😔</div>
+              <h3 className="text-lg font-bold mb-2">
+                Agendamento online indisponível
+              </h3>
+              <p className="text-gray-500 mb-6">
+                Seu endereço está fora da nossa área de agendamento online,
+                mas podemos atendê-lo! Fale com nossa equipe:
+              </p>
+              <a
+                href={whatsappLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 bg-green-500 text-white 
+                           px-6 py-3 rounded-lg font-medium hover:bg-green-600"
+              >
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+                </svg>
+                Falar no WhatsApp
+              </a>
+              <button
+                onClick={() => setStep('address')}
+                className="block mx-auto mt-4 text-sm text-gray-400 hover:text-gray-600"
+              >
+                ← Tentar outro endereço
+              </button>
+            </div>
+          )}
+
+          {/* ===== STEP: ESCOLHER HORÁRIO ===== */}
+          {step === 'choose_time' && (
+            <div>
+              <div className="flex gap-2 mb-4">
+                <button
+                  onClick={() => setMode('suggestions')}
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium
+                    ${mode === 'suggestions' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100'}`}
+                >
+                  ⭐ Melhores Horários
+                </button>
+                <button
+                  onClick={() => setMode('calendar')}
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium
+                    ${mode === 'calendar' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100'}`}
+                >
+                  📅 Escolher Data
+                </button>
+              </div>
+
+              {/* OPÇÃO A: Sugestões */}
+              {mode === 'suggestions' && (
+                <div className="space-y-2">
+                  <p className="text-sm text-gray-500 mb-3">
+                    Horários com melhor disponibilidade para sua região:
+                  </p>
+                  {suggestions.map((s, i) => (
+                    <button
+                      key={i}
+                      onClick={() => {
+                        setSelectedSlot(s);
+                        setStep('details');
+                      }}
+                      className={`w-full text-left p-4 rounded-lg border-2 
+                                  hover:border-blue-400 transition
+                        ${i === 0 ? 'border-green-400 bg-green-50' : 'border-gray-200'}
+                      `}
+                    >
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <div className="font-medium">{s.date_formatted}</div>
+                          <div className="text-2xl font-bold text-blue-600">{s.time}</div>
+                        </div>
+                        {i === 0 && (
+                          <span className="bg-green-500 text-white text-xs px-2 py-1 rounded">
+                            Recomendado
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* OPÇÃO B: Calendário livre */}
+              {mode === 'calendar' && (
+                <div className="space-y-3">
+                  <p className="text-sm text-gray-500 mb-3">
+                    Dias e horários disponíveis:
+                  </p>
+                  {availableDays.map((day) => (
+                    <div key={day.date} className="border rounded-lg p-3">
+                      <div className="font-medium text-sm mb-2">
+                        📅 {day.date_formatted}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {day.available_times.map(time => (
+                          <button
+                            key={time}
+                            onClick={() => {
+                              // Encontrar o suggestion correspondente
+                              const match = suggestions.find(
+                                s => s.date === day.date && s.time === time
+                              );
+                              if (match) {
+                                setSelectedSlot(match);
+                                setStep('details');
+                              }
+                            }}
+                            className="px-3 py-2 border rounded-lg text-sm
+                                       hover:bg-blue-50 hover:border-blue-300"
+                          >
+                            {time}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ===== STEP: DADOS DO CLIENTE ===== */}
+          {step === 'details' && selectedSlot && (
+            <div className="space-y-4">
+              <div className="bg-blue-50 rounded-lg p-4 mb-4">
+                <div className="text-sm text-gray-500">Horário selecionado:</div>
+                <div className="font-bold text-lg">
+                  {selectedSlot.date_formatted} às {selectedSlot.time}
+                </div>
+                <button
+                  onClick={() => setStep('choose_time')}
+                  className="text-sm text-blue-600 mt-1"
+                >
+                  ← Alterar horário
+                </button>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Nome completo *</label>
+                <input
+                  type="text"
+                  value={clientName}
+                  onChange={e => setClientName(e.target.value)}
+                  className="w-full border rounded-lg px-4 py-3"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">WhatsApp / Telefone *</label>
+                <input
+                  type="tel"
+                  value={clientPhone}
+                  onChange={e => setClientPhone(e.target.value)}
+                  placeholder="(41) 99999-9999"
+                  className="w-full border rounded-lg px-4 py-3"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">E-mail</label>
+                <input
+                  type="email"
+                  value={clientEmail}
+                  onChange={e => setClientEmail(e.target.value)}
+                  className="w-full border rounded-lg px-4 py-3"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Tipo de imóvel</label>
+                <select
+                  value={propertyType}
+                  onChange={e => setPropertyType(e.target.value)}
+                  className="w-full border rounded-lg px-4 py-3"
+                >
+                  <option value="">Selecione...</option>
+                  <option value="apartamento">Apartamento</option>
+                  <option value="casa">Casa</option>
+                  <option value="comercial">Comercial</option>
+                  <option value="terreno">Terreno</option>
+                </select>
+              </div>
+
+              <button
+                onClick={handleBook}
+                disabled={!clientName || !clientPhone}
+                className="w-full bg-green-600 text-white py-3 rounded-lg font-medium
+                           hover:bg-green-700 disabled:opacity-50"
+              >
+                Confirmar Agendamento ✓
+              </button>
+            </div>
+          )}
+
+          {/* ===== STEP: CONFIRMADO ===== */}
+          {step === 'confirmed' && booking && (
+            <div className="text-center py-8">
+              <div className="text-5xl mb-4">✅</div>
+              <h3 className="text-xl font-bold text-green-700 mb-2">
+                Agendamento Confirmado!
+              </h3>
+              <div className="bg-green-50 rounded-lg p-4 mb-4 text-left">
+                <div className="text-sm space-y-1">
+                  <div><b>Data:</b> {booking.date_formatted}</div>
+                  <div><b>Horário:</b> {booking.time}</div>
+                  <div><b>Endereço:</b> {address}, {addressNumber}</div>
+                  <div><b>Código:</b> {booking.id?.slice(0, 8)}</div>
+                </div>
+              </div>
+              <p className="text-sm text-gray-500">
+                Você receberá uma confirmação por WhatsApp.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+Resumo: Ordem de Implementação

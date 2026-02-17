@@ -58,6 +58,7 @@ export async function POST(request: Request) {
             notes,
             address,
             neighborhood,
+            // @ts-ignore
             zipCode,
             complement,
             latitude,
@@ -91,6 +92,7 @@ export async function POST(request: Request) {
           notes,
           address,
           neighborhood,
+          // @ts-ignore
           zipCode,
           complement,
           latitude,

@@ -53,6 +53,35 @@ export async function POST(request: Request) {
     const allowedCity = 'Curitiba';
 
     if (city === allowedCity) {
+
+      // LAZY LEARNING: Save precise Lat/Lng for this CEP
+      if (zipCode && result.geometry.location) {
+        const cleanZip = zipCode.replace(/\D/g, '');
+        if (cleanZip.length === 8) {
+          try {
+            await prisma.cepLocation.upsert({
+              where: { zipCode: cleanZip },
+              update: {
+                latitude: result.geometry.location.lat,
+                longitude: result.geometry.location.lng,
+                neighborhood: neighborhood,
+                city: city
+              },
+              create: {
+                zipCode: cleanZip,
+                latitude: result.geometry.location.lat,
+                longitude: result.geometry.location.lng,
+                neighborhood: neighborhood,
+                city: city
+              }
+            });
+          } catch (e) {
+            // Non-blocking error
+            console.error("Failed to save CepLocation:", e);
+          }
+        }
+      }
+
       return NextResponse.json({
         inCoverage: true,
         city,
