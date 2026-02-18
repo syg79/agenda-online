@@ -34,7 +34,7 @@ export const CURITIBA_NEIGHBORHOODS = [
 // --- Helper Functions (Async) ---
 
 async function getActivePhotographers(): Promise<Photographer[]> {
-    const dbPhotographers = await prisma.photographer.findMany({
+    const dbPhotographers = await (prisma as any).photographer.findMany({
         where: { active: true },
         select: {
             id: true,
@@ -45,7 +45,15 @@ async function getActivePhotographers(): Promise<Photographer[]> {
         }
     });
 
-    return dbPhotographers.map(p => ({
+    interface DbPhotographer {
+        id: string;
+        name: string;
+        email: string;
+        services: string[];
+        neighborhoods: any;
+    }
+
+    return (dbPhotographers as unknown as DbPhotographer[]).map((p: DbPhotographer) => ({
         id: p.id,
         name: p.name,
         email: p.email,
@@ -58,13 +66,47 @@ async function getActivePhotographers(): Promise<Photographer[]> {
  * Filter photographers who cover a specific neighborhood for a specific service.
  */
 export async function getPhotographersForNeighborhood(neighborhood: string, serviceId?: string): Promise<Photographer[]> {
-    const photographers = await getActivePhotographers();
+    // Define a temporary interface for the raw data from Prisma
+    interface RawDbPhotographer {
+        id: string;
+        name: string;
+        email: string;
+        services: string[];
+        neighborhoods: any; // This will be the JSON or array from DB
+    }
+
+    // Fetch raw data from Prisma
+    const dbPhotographers = await (prisma as any).photographer.findMany({
+        where: { active: true },
+        select: {
+            id: true,
+            name: true,
+            email: true,
+            services: true,
+            neighborhoods: true,
+            latitude: true,
+            longitude: true,
+            travelRadius: true
+        }
+    });
+
+    // Map raw data to the Photographer interface
+    const photographers: Photographer[] = dbPhotographers.map((p: RawDbPhotographer) => ({
+        id: p.id,
+        name: p.name,
+        email: p.email,
+        capabilities: p.services,
+        coverage: p.neighborhoods,
+        latitude: (p as any).latitude, // Cast to any to access optional fields
+        longitude: (p as any).longitude,
+        travelRadius: (p as any).travelRadius || 15 // Default 15km
+    }));
 
     if (!neighborhood) return photographers;
 
     const normalizedNeighborhood = neighborhood.trim().toLowerCase();
 
-    return photographers.filter(p => {
+    return photographers.filter((p: Photographer) => {
         // Basic Legacy Check
         if (Array.isArray(p.coverage)) {
             if (p.coverage.includes('ALL')) return true;
@@ -104,7 +146,7 @@ export async function getPhotographersForServices(serviceIds: string[]): Promise
 
     if (!serviceIds || serviceIds.length === 0) return photographers;
 
-    return photographers.filter(p => {
+    return photographers.filter((p: Photographer) => {
         if (p.capabilities.includes('ALL')) return true;
         return serviceIds.every(s => p.capabilities.includes(s));
     });
@@ -127,7 +169,7 @@ export async function getValidPhotographers(
 ): Promise<Photographer[]> {
     // We fetch all active once to avoid multiple DB calls
     // Phase 5: Also fetch lat/lng/travelRadius
-    const allPhotographersRaw = await prisma.photographer.findMany({
+    const allPhotographersRaw = await (prisma as any).photographer.findMany({
         where: { active: true },
         select: {
             id: true,
@@ -141,7 +183,7 @@ export async function getValidPhotographers(
         }
     });
 
-    const allPhotographers = allPhotographersRaw.map(p => ({
+    const allPhotographers = allPhotographersRaw.map((p: any) => ({
         id: p.id,
         name: p.name,
         email: p.email,
@@ -153,14 +195,14 @@ export async function getValidPhotographers(
     }));
 
     // 1. Capability Check (Strict: Must be able to do the job)
-    const capablePhotographers = allPhotographers.filter(p => {
+    const capablePhotographers = allPhotographers.filter((p: Photographer) => {
         if (p.capabilities.includes('ALL')) return true;
         if (!serviceIds || serviceIds.length === 0) return true;
         return serviceIds.every(s => p.capabilities.includes(s));
     });
 
     // 2. Coverage Check (Flexible: If I go for Video, I can do Photo too)
-    return capablePhotographers.filter(p => {
+    return capablePhotographers.filter((p: Photographer) => {
         // MATCH LOGGING
         // console.log(`Checking ${p.name} for ${neighborhood} (Lat: ${clientLat}, Lng: ${clientLng})`);
 

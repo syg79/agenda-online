@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { getAdminData, updatePhotographerNeighborhoods, updatePhotographerServices, updatePhotographerLocation } from './actions';
+import { getAdminData, updatePhotographerNeighborhoods, updatePhotographerServices, updatePhotographerLocation, updatePhotographerColor, updatePhotographerBase } from './actions';
 
 // --- Curitiba Administrative Regions Mapping ---
 const CURITIBA_REGIONS: Record<string, string[]> = {
@@ -85,11 +85,11 @@ export default function AdminDashboard() {
             // Normal Toggle
             if (serviceNeighborhoods.includes('ALL')) {
                 serviceNeighborhoods = [...neighborhoods];
-                serviceNeighborhoods = serviceNeighborhoods.filter(n => n !== 'ALL');
+                serviceNeighborhoods = serviceNeighborhoods.filter((n: string) => n !== 'ALL');
             }
 
             if (serviceNeighborhoods.includes(neighborhood)) {
-                serviceNeighborhoods = serviceNeighborhoods.filter(n => n !== neighborhood);
+                serviceNeighborhoods = serviceNeighborhoods.filter((n: string) => n !== neighborhood);
             } else {
                 serviceNeighborhoods.push(neighborhood);
             }
@@ -196,7 +196,7 @@ export default function AdminDashboard() {
                                     {/* Left: Photographer List */}
                                     <div className="w-1/4 border-r pr-6 space-y-2 overflow-y-auto">
                                         <h3 className="font-semibold text-slate-700 mb-4">Fotógrafo</h3>
-                                        {photographers.map(p => (
+                                        {photographers.map((p: any) => (
                                             <button
                                                 key={p.id}
                                                 onClick={() => setSelectedPhotographerId(p.id)}
@@ -296,7 +296,7 @@ export default function AdminDashboard() {
                                                             {/* Neighborhood Grid */}
                                                             <div className="flex-1 overflow-y-auto pr-2">
                                                                 <div className="grid grid-cols-3 gap-2">
-                                                                    {neighborhoods.sort().map(n => (
+                                                                    {neighborhoods.sort().map((n: string) => (
                                                                         <label key={n} className={`flex items-center gap-2 p-2 rounded cursor-pointer transition border ${currentList.includes(n) ? 'bg-blue-50 border-blue-200' : 'hover:bg-slate-50 border-transparent'}`}>
                                                                             <input
                                                                                 type="checkbox"
@@ -351,8 +351,8 @@ export default function AdminDashboard() {
                                         ) : (
                                             <GeolocationConfig
                                                 photographer={photographers.find(x => x.id === selectedPhotographerId)}
-                                                onUpdate={(id, lat, lng, rad) => {
-                                                    setPhotographers(prev => prev.map(p => p.id === id ? { ...p, latitude: lat, longitude: lng, travelRadius: rad } : p));
+                                                onUpdate={(id, data) => {
+                                                    setPhotographers(prev => prev.map(p => p.id === id ? { ...p, ...data } : p));
                                                 }}
                                             />
                                         )}
@@ -381,10 +381,12 @@ export default function AdminDashboard() {
     );
 }
 
-function GeolocationConfig({ photographer, onUpdate }: { photographer: any, onUpdate: (id: string, lat: number | null, lng: number | null, radius: number) => void }) {
+function GeolocationConfig({ photographer, onUpdate }: { photographer: any, onUpdate: (id: string, data: any) => void }) {
     const [lat, setLat] = useState(photographer.latitude || '');
     const [lng, setLng] = useState(photographer.longitude || '');
     const [radius, setRadius] = useState(photographer.travelRadius || 15);
+    const [color, setColor] = useState(photographer.color || '#3B82F6');
+    const [baseAddress, setBaseAddress] = useState(photographer.baseAddress || '');
     const [addressSearch, setAddressSearch] = useState('');
     const [isSearching, setIsSearching] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -394,6 +396,8 @@ function GeolocationConfig({ photographer, onUpdate }: { photographer: any, onUp
         setLat(photographer.latitude || '');
         setLng(photographer.longitude || '');
         setRadius(photographer.travelRadius || 15);
+        setColor(photographer.color || '#3B82F6');
+        setBaseAddress(photographer.baseAddress || '');
         setAddressSearch('');
     }, [photographer.id]);
 
@@ -412,6 +416,8 @@ function GeolocationConfig({ photographer, onUpdate }: { photographer: any, onUp
             if (data.latitude && data.longitude) {
                 setLat(data.latitude);
                 setLng(data.longitude);
+                // Also set the base address to what was searched if successful
+                setBaseAddress(addressSearch);
             } else {
                 alert('Endereço não encontrado ou sem coordenadas.');
             }
@@ -427,14 +433,30 @@ function GeolocationConfig({ photographer, onUpdate }: { photographer: any, onUp
         const latNum = lat ? parseFloat(lat) : null;
         const lngNum = lng ? parseFloat(lng) : null;
 
-        const result = await updatePhotographerLocation(photographer.id, latNum, lngNum, radius);
-        if (result.success) {
-            onUpdate(photographer.id, latNum, lngNum, radius);
-            alert('Localização atualizada com sucesso!');
-        } else {
-            alert('Erro ao atualizar: ' + result.error);
+        // Save multiple things: Location, Color, BaseAddress
+        try {
+            await Promise.all([
+                updatePhotographerLocation(photographer.id, latNum, lngNum, radius),
+                updatePhotographerColor(photographer.id, color),
+                updatePhotographerBase(photographer.id, baseAddress, latNum, lngNum)
+            ]);
+
+            onUpdate(photographer.id, {
+                latitude: latNum,
+                longitude: lngNum,
+                travelRadius: radius,
+                color: color,
+                baseAddress: baseAddress,
+                baseLat: latNum,
+                baseLng: lngNum
+            });
+
+            alert('Configurações atualizadas com sucesso!');
+        } catch (error) {
+            alert('Erro ao atualizar configurações.');
+        } finally {
+            setIsSaving(false);
         }
-        setIsSaving(false);
     };
 
     return (
@@ -465,6 +487,45 @@ function GeolocationConfig({ photographer, onUpdate }: { photographer: any, onUp
                     </button>
                 </div>
                 <p className="text-xs text-blue-600 mt-2">Busca automática no Google Maps (Curitiba).</p>
+            </div>
+
+            {/* Color and Status */}
+            <div className="grid grid-cols-2 gap-4">
+                <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-1">Cor no Mapa</label>
+                    <div className="flex gap-2">
+                        <input
+                            type="color"
+                            value={color}
+                            onChange={(e) => setColor(e.target.value)}
+                            className="w-12 h-10 p-1 rounded border overflow-hidden cursor-pointer"
+                        />
+                        <input
+                            type="text"
+                            value={color}
+                            onChange={(e) => setColor(e.target.value)}
+                            className="flex-1 px-3 py-2 text-sm border rounded uppercase font-mono"
+                        />
+                    </div>
+                </div>
+                <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-1">Identificador</label>
+                    <div className="w-full h-10 px-3 flex items-center bg-slate-50 border rounded text-slate-400 text-sm font-mono truncate">
+                        {photographer.id}
+                    </div>
+                </div>
+            </div>
+
+            {/* Base Address Display */}
+            <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Endereço Residencial (Base)</label>
+                <textarea
+                    value={baseAddress}
+                    onChange={(e) => setBaseAddress(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-blue-500 bg-slate-50 font-medium"
+                    rows={2}
+                    placeholder="Endereço principal de partida do fotógrafo..."
+                />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -530,3 +591,4 @@ function GeolocationConfig({ photographer, onUpdate }: { photographer: any, onUp
         </div>
     );
 }
+

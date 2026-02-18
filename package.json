@@ -20,6 +20,7 @@
   "dependencies": {
     "@prisma/client": "^5.9.0",
     "@react-email/components": "^0.0.14",
+    "@react-leaflet/core": "^2.1.0",
     "@types/leaflet": "^1.9.21",
     "axios": "^1.13.4",
     "clsx": "^2.1.0",
@@ -31,7 +32,7 @@
     "pg": "^8.18.0",
     "react": "18.2.0",
     "react-dom": "18.2.0",
-    "react-leaflet": "^5.0.0",
+    "react-leaflet": "^4.2.1",
     "resend": "^3.0.0",
     "tailwind-merge": "^2.2.0",
     "zod": "^3.22.4"

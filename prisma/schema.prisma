@@ -64,6 +64,7 @@ model Photographer {
   
   // Phase 8: Smart Scheduling (SQL-Centric)
   color         String   @default("#3B82F6")
+  baseAddress   String?
   baseLat       Float?   @default(-25.4284)
   baseLng       Float?   @default(-49.2733)
 

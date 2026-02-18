@@ -6,12 +6,12 @@ import { revalidatePath } from 'next/cache';
 import { CURITIBA_NEIGHBORHOODS } from '@/lib/scheduling-rules';
 
 export async function getAdminData() {
-    const photographers = await prisma.photographer.findMany({
+    const photographers = await (prisma as any).photographer.findMany({
         where: { active: true },
         orderBy: { name: 'asc' }
     });
 
-    const curitibaRegion = await prisma.region.findFirst({
+    const curitibaRegion = await (prisma as any).region.findFirst({
         where: { name: 'Curitiba (Todos)' }
     });
 
@@ -23,7 +23,7 @@ export async function getAdminData() {
 
 export async function updatePhotographerNeighborhoods(id: string, neighborhoods: any) {
     try {
-        await prisma.photographer.update({
+        await (prisma as any).photographer.update({
             where: { id },
             data: { neighborhoods }
         });
@@ -37,7 +37,7 @@ export async function updatePhotographerNeighborhoods(id: string, neighborhoods:
 
 export async function updatePhotographerServices(id: string, services: string[]) {
     try {
-        await prisma.photographer.update({
+        await (prisma as any).photographer.update({
             where: { id },
             data: { services }
         });
@@ -45,6 +45,58 @@ export async function updatePhotographerServices(id: string, services: string[])
         return { success: true };
     } catch (error: any) {
         console.error('Error updating services:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+export async function updatePhotographerLocation(id: string, lat: number | null, lng: number | null, radius: number) {
+    try {
+        await (prisma as any).photographer.update({
+            where: { id },
+            data: {
+                latitude: lat,
+                longitude: lng,
+                travelRadius: radius
+            }
+        });
+        revalidatePath('/admin');
+        return { success: true };
+    } catch (error: any) {
+        console.error('Error updating location:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+export async function updatePhotographerColor(id: string, color: string) {
+    try {
+        await (prisma as any).photographer.update({
+            where: { id },
+            data: { color }
+        });
+        revalidatePath('/admin');
+        revalidatePath('/secretaria/dashboard');
+        return { success: true };
+    } catch (error: any) {
+        console.error('Error updating color:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+export async function updatePhotographerBase(id: string, address: string, lat: number | null, lng: number | null) {
+    try {
+        await (prisma as any).photographer.update({
+            where: { id },
+            data: {
+                baseAddress: address,
+                baseLat: lat,
+                baseLng: lng
+            }
+        });
+        revalidatePath('/admin');
+        revalidatePath('/secretaria/dashboard');
+        return { success: true };
+    } catch (error: any) {
+        console.error('Error updating base address:', error);
         return { success: false, error: error.message };
     }
 }

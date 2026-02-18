@@ -1,104 +1,97 @@
 
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma'; // Assuming you have a singleton instance
+import { prisma } from '@/lib/prisma';
 
-export const dynamic = 'force-dynamic'; // Ensure no caching for status updates
+export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
     try {
         const { searchParams } = new URL(req.url);
         const dateStr = searchParams.get('date') || new Date().toISOString().split('T')[0];
+        const type = searchParams.get('type'); // 'timeline', 'pending', or null (all)
 
-        // 1. Fetch Active Photographers
-        const photographers = await prisma.photographer.findMany({
-            where: { active: true },
-            select: {
-                id: true,
-                name: true,
-                color: true,
-                services: true,
-                neighborhoods: true,
-                latitude: true,
-                longitude: true,
-                // Include preferences or regions if needed later
-            },
-            orderBy: { name: 'asc' },
-        });
+        let photographers: any[] = [];
+        let schedule: any[] = [];
+        let pending: any[] = [];
 
-        // 2. Fetch Schedule for the Date (Confirmed/Completed/In_Progress)
-        // We need to parse the date to query the DateTime field correctly
-        // Assuming 'date' in DB is stored as midnight UTC or local. 
-        // Prisma usually handles exact match if we pass the Date object or string properly.
-        // However, if 'date' has time components, we need a range.
-        // Let's assume 'date' column is purely date (midnight).
-
-        // Adjust logic: Find bookings where date matches the string YYYY-MM-DD
-        const targetDate = new Date(dateStr);
-
-        // Create start and end of day for range query to be safe
-        const startOfDay = new Date(targetDate);
-        startOfDay.setUTCHours(0, 0, 0, 0);
-        const endOfDay = new Date(targetDate);
-        endOfDay.setUTCHours(23, 59, 59, 999);
-
-        const schedule = await prisma.booking.findMany({
-            where: {
-                date: {
-                    gte: startOfDay,
-                    lte: endOfDay,
+        // 1. Fetch data based on type
+        if (!type || type === 'timeline') {
+            photographers = await (prisma as any).photographer.findMany({
+                where: { active: true },
+                select: {
+                    id: true,
+                    name: true,
+                    color: true,
+                    services: true,
+                    neighborhoods: true,
+                    latitude: true,
+                    longitude: true,
                 },
-                photographerId: { not: null }, // Only assigned bookings
-                status: {
-                    not: 'CANCELED',
-                },
-            },
-            include: {
-                photographer: {
-                    select: { name: true, color: true },
-                },
-            },
-            orderBy: { time: 'asc' },
-        });
+                orderBy: { name: 'asc' },
+            });
 
-        // 3. Fetch Pending Orders (Unassigned)
-        // These are bookings that need a photographer assigned
-        const pending = await prisma.booking.findMany({
-            where: {
-                photographerId: null,
-                status: { not: 'CANCELED' },
-            },
-            orderBy: [
-                { date: 'asc' }, // Soonest first
-                { time: 'asc' },
-            ],
-            take: 50,
-            select: { // Explicit select to ensure lat/lng is returned
-                id: true,
-                protocol: true,
-                clientName: true,
-                date: true,
-                time: true,
-                duration: true,
-                address: true,
-                neighborhood: true,
-                services: true,
-                status: true,
-                latitude: true,
-                longitude: true
-            }
-        });
+            const targetDate = new Date(dateStr + 'T00:00:00');
+            const startOfDay = new Date(targetDate);
+            startOfDay.setHours(0, 0, 0, 0);
+            const endOfDay = new Date(targetDate);
+            endOfDay.setHours(23, 59, 59, 999);
 
-        // 4. Calculate Stats (Optional)
+            schedule = await (prisma as any).booking.findMany({
+                where: {
+                    date: {
+                        gte: startOfDay,
+                        lte: endOfDay,
+                    },
+                    photographerId: { not: null },
+                    status: { not: 'CANCELED' },
+                },
+                include: {
+                    photographer: {
+                        select: { name: true, color: true },
+                    },
+                },
+                orderBy: { time: 'asc' },
+            });
+        }
+
+        if (!type || type === 'pending') {
+            pending = await (prisma as any).booking.findMany({
+                where: {
+                    photographerId: null,
+                    status: { not: 'CANCELED' },
+                },
+                orderBy: [
+                    { date: 'asc' },
+                    { time: 'asc' },
+                ],
+                take: 50,
+                select: {
+                    id: true,
+                    protocol: true,
+                    clientName: true,
+                    date: true,
+                    time: true,
+                    duration: true,
+                    address: true,
+                    neighborhood: true,
+                    services: true,
+                    status: true,
+                    latitude: true,
+                    longitude: true
+                }
+            });
+        }
+
         const stats = {
-            pendingCount: pending.length,
-            scheduledCount: schedule.length,
+            pendingCount: type === 'timeline' ? undefined : pending.length,
+            scheduledCount: type === 'pending' ? undefined : schedule.length,
         };
 
         return NextResponse.json({
             date: dateStr,
-            photographers,
-            schedule,
-            pending,
+            photographers: (!type || type === 'timeline') ? photographers : undefined,
+            schedule: (!type || type === 'timeline') ? schedule : [],
+            pending: (!type || type === 'pending') ? pending : undefined,
             stats,
         });
 

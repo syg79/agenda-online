@@ -81,8 +81,9 @@ export async function findSchedulingOpportunities(
             photographerId: null,
             latitude: { not: null },
             longitude: { not: null },
-            date: { gte: startOfDay, lte: endOfDay } // Only pending for THIS DAY for now
-        }
+            // Removed date filter: Pending orders are relevant regardless of requested date if they are geographically close
+        },
+        take: 100 // Safety limit
     });
 
     // 3. Process Confirmed Bookings (Find Gaps)

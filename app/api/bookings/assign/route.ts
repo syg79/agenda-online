@@ -15,12 +15,12 @@ export async function POST(req: NextRequest) {
         }
 
         // 1. Check if slot is taken? 
-        // Fluidity: Maybe warn, but for now allow override or simple check.
-        // Let's check strict collision (same photographer, exact same time).
-        const collision = await prisma.booking.findFirst({
+        const targetDate = new Date(date + 'T00:00:00');
+
+        const collision = await (prisma as any).booking.findFirst({
             where: {
                 photographerId,
-                date: new Date(date), // Be careful with time zone, usually strings work
+                date: targetDate,
                 time,
                 status: { not: 'CANCELED' },
             },
@@ -34,13 +34,13 @@ export async function POST(req: NextRequest) {
         }
 
         // 2. Update Booking
-        const updated = await prisma.booking.update({
+        const updated = await (prisma as any).booking.update({
             where: { id: bookingId },
             data: {
                 photographerId,
-                date: new Date(date),
+                date: targetDate,
                 time,
-                status: 'CONFIRMED', // Ensure it's confirmed
+                status: 'CONFIRMED',
                 updatedAt: new Date(),
             },
             include: {
