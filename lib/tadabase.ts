@@ -239,6 +239,54 @@ export const tadabase = {
         }
     },
 
+    async getPendingBookings() {
+        const { API_URL, APP_ID, APP_KEY, APP_SECRET, TABLE_ID } = getEnv();
+        if (!APP_ID || !APP_KEY || !APP_SECRET || !TABLE_ID) return [];
+
+        try {
+            const allItems = [];
+            let page = 1;
+            let hasMore = true;
+
+            while (hasMore) {
+                // Filter: Status is "Pendente"
+                const url = `${API_URL}/data-tables/${TABLE_ID}/records?limit=100&page=${page}&filters[items][0][field_id]=${FIELDS.status}&filters[items][0][operator]=is&filters[items][0][val]=Pendente`;
+
+                console.log(`🔎 Paginating Tadabase (Page ${page})...`);
+
+                const res = await fetch(url, {
+                    headers: {
+                        'X-Tadabase-App-id': APP_ID,
+                        'X-Tadabase-App-Key': APP_KEY,
+                        'X-Tadabase-App-Secret': APP_SECRET
+                    }
+                });
+
+                if (!res.ok) throw new Error(`API Error: ${res.status}`);
+
+                const data = await res.json();
+                const items = data.items || [];
+
+                allItems.push(...items);
+
+                if (data.has_more && data.current_page < data.total_pages) {
+                    page++;
+                } else {
+                    hasMore = false;
+                }
+
+                // Safety break
+                if (page > 10) hasMore = false;
+            }
+
+            return allItems;
+
+        } catch (error) {
+            console.error('Error fetching pendings:', error);
+            return [];
+        }
+    },
+
     async getFormattedBooking(protocol: string) {
         const record = await this.findRecordByProtocol(protocol);
         if (!record) return null;

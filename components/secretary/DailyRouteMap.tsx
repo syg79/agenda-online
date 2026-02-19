@@ -2,31 +2,37 @@
 
 import * as React from 'react';
 import { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, Circle } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline, Tooltip } from 'react-leaflet';
 import * as L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Home, Camera, Clock } from 'lucide-react';
+import { Home, Camera, Clock, FileText } from 'lucide-react';
 import { renderToString } from 'react-dom/server';
 
 // Custom colored markers for different photographers
-const getMarkerIcon = (color: string, number: number | string, isBase: boolean = false) => {
+const getMarkerIcon = (color: string, number: number | string, isBase: boolean = false, isSelected: boolean = false) => {
+    const size = isSelected ? (isBase ? 40 : 32) : (isBase ? 32 : 24);
+    const fontSize = isSelected ? (isBase ? '16px' : '14px') : (isBase ? '14px' : '12px');
+    const borderSize = isSelected ? '3px' : '2px';
+
     const iconHtml = renderToString(
         <div style={{
             backgroundColor: isBase ? 'white' : color,
-            width: isBase ? '32px' : '24px',
-            height: isBase ? '32px' : '24px',
+            width: `${size}px`,
+            height: `${size}px`,
             borderRadius: '50%',
-            border: `2px solid ${isBase ? color : 'white'}`,
+            border: `${borderSize} solid ${isSelected ? '#1e293b' : (isBase ? color : 'white')}`, // Dark border for selected
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             color: isBase ? color : 'white',
             fontWeight: 'bold',
-            fontSize: isBase ? '14px' : '12px',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
-            position: 'relative'
+            fontSize: fontSize,
+            boxShadow: isSelected ? '0 0 15px rgba(0,0,0,0.5)' : '0 2px 4px rgba(0,0,0,0.3)',
+            position: 'relative',
+            zIndex: isSelected ? 1000 : 1,
+            transform: isSelected ? 'scale(1.1)' : 'scale(1)'
         }}>
-            {isBase ? <Home size={16} /> : number}
+            {isBase ? <Home size={isSelected ? 20 : 16} /> : number}
             {!isBase && (
                 <div style={{
                     position: 'absolute',
@@ -37,7 +43,7 @@ const getMarkerIcon = (color: string, number: number | string, isBase: boolean =
                     height: '0',
                     borderLeft: '4px solid transparent',
                     borderRight: '4px solid transparent',
-                    borderTop: `4px solid ${color}`
+                    borderTop: `4px solid ${isSelected ? '#1e293b' : color}`
                 }} />
             )}
         </div>
@@ -46,31 +52,33 @@ const getMarkerIcon = (color: string, number: number | string, isBase: boolean =
     return L.divIcon({
         className: 'custom-div-icon',
         html: iconHtml,
-        iconSize: isBase ? [32, 32] : [24, 24],
-        iconAnchor: isBase ? [16, 16] : [12, 12],
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2],
     });
 };
 
-function SetViewToFitMarkers({ markers }: { markers: [number, number][] }) {
+function SetViewToFitMarkers({ markers, selectedId, allItems }: { markers: [number, number][], selectedId?: string | null, allItems: any[] }) {
     const map = useMap();
+
+    // Pan to selected item
     useEffect(() => {
-        if (markers.length > 0) {
+        if (selectedId) {
+            const item = allItems.find(i => i.id === selectedId);
+            if (item && item.latitude && item.longitude) {
+                map.flyTo([item.latitude, item.longitude], 15, { duration: 1.5 });
+                return;
+            }
+        }
+        // Fallback: fit bounds if no selection or init
+        if (markers.length > 0 && !selectedId) {
             const bounds = L.latLngBounds(markers);
             map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
         }
-    }, [markers, map]);
+    }, [markers, map, selectedId, allItems]);
     return null;
 }
 
-// Helper for forced photographer colors
-const getPhotographerColor = (name: string, currentColor: string | null) => {
-    const n = name.toLowerCase();
-    if (n.includes('augusto')) return '#EF4444'; // Red
-    if (n.includes('renato')) return '#F97316'; // Orange
-    if (n.includes('rodrigo')) return '#0EA5E9'; // Light Blue
-    if (n.includes('rafael')) return '#22D3EE'; // Cyan
-    return currentColor || '#3B82F6';
-};
+import { getPhotographerColor } from '@/lib/utils';
 
 interface DailyRouteMapProps {
     schedule: any[];
@@ -78,10 +86,12 @@ interface DailyRouteMapProps {
     photographers: any[];
     filterId: string | 'all';
     showPending?: boolean;
+    showPhotographerBase?: boolean;
     onOrderClick: (order: any) => void;
+    selectedOrderId?: string | null;
 }
 
-export default function DailyRouteMap({ schedule, pending = [], photographers, filterId, showPending = false, onOrderClick }: DailyRouteMapProps) {
+export default function DailyRouteMap({ schedule, pending = [], photographers, filterId, showPending = false, showPhotographerBase = false, onOrderClick, selectedOrderId }: DailyRouteMapProps) {
     const [isMounted, setIsMounted] = useState(false);
     const [isReady, setIsReady] = useState(false);
 
@@ -97,23 +107,25 @@ export default function DailyRouteMap({ schedule, pending = [], photographers, f
     if (!isMounted || !isReady) return <div className="w-full h-full bg-slate-100 flex items-center justify-center text-slate-400 font-bold uppercase tracking-widest animate-pulse">Iniciando Leaflet...</div>;
 
     // Filter schedules by selected photographer if not 'all'
-    const filteredSchedules = filterId === 'all'
+    const isAll = !filterId || filterId === 'all';
+    const filteredSchedules = isAll
         ? schedule
-        : schedule.filter(s => s.photographerId === filterId);
-
-    if (filterId === 'all') {
-        console.log('DailyRouteMap ALL view DEBUG:', {
-            totalReceived: schedule.length,
-            filtered: filteredSchedules.length,
-            photographersInSchedule: Array.from(new Set(schedule.map(s => s.photographerId))),
-            photographersList: photographers.map(p => p.id)
-        });
-    }
+        : schedule.filter(s => String(s.photographerId) === String(filterId));
 
     // Only valid coords
     const validSchedules = filteredSchedules
-        .filter(s => s.latitude && s.longitude)
-        .sort((a, b) => a.time.localeCompare(b.time));
+        .filter(s => {
+            const hasCoords = s.latitude && s.longitude;
+            if (!hasCoords && isAll) {
+                console.warn(`Booking ${s.id} (Photog: ${s.photographerId}) missing coordinates!`);
+            }
+            return hasCoords;
+        })
+        .sort((a, b) => {
+            const timeDiff = a.time.localeCompare(b.time);
+            if (timeDiff !== 0) return timeDiff;
+            return a.id.localeCompare(b.id);
+        });
 
     // Filter pendings by same logic (if they have coordinates)
     const validPending = (showPending ? pending : [])
@@ -150,7 +162,7 @@ export default function DailyRouteMap({ schedule, pending = [], photographers, f
     return (
         <div id="daily-route-map-container" className="w-full h-full relative group">
             <MapContainer
-                key={`daily-route-map-${filterId}-${showPending}-${Math.random()}`}
+                key={`daily-route-map-${filterId}-${showPending ? 'p' : ''}`}
                 center={initialCenter}
                 zoom={12}
                 scrollWheelZoom={true}
@@ -163,12 +175,13 @@ export default function DailyRouteMap({ schedule, pending = [], photographers, f
                 />
 
                 {/* Photographer Bases (Pin Zero / Home) */}
-                {relevantPhotographers.map(p => {
+                {showPhotographerBase && relevantPhotographers.map(p => {
                     const color = getPhotographerColor(p.name, p.color);
-                    return p.latitude && p.longitude && (
+                    // Use baseLat/baseLng for the Home Icon, NOT the current latitude
+                    return p.baseLat && p.baseLng && (
                         <React.Fragment key={`base-${p.id}`}>
                             <Marker
-                                position={[p.latitude, p.longitude]}
+                                position={[p.baseLat, p.baseLng]}
                                 icon={getMarkerIcon(color, '0', true)}
                                 zIndexOffset={1000}
                             >
@@ -179,32 +192,28 @@ export default function DailyRouteMap({ schedule, pending = [], photographers, f
                                     </div>
                                 </Popup>
                             </Marker>
-                            {/* Visual radius of action if defined */}
-                            {p.travelRadius && (
-                                <Circle
-                                    center={[p.latitude, p.longitude]}
-                                    radius={p.travelRadius * 1000}
-                                    pathOptions={{
-                                        color: color,
-                                        fillColor: color,
-                                        fillOpacity: 0.05,
-                                        weight: 1,
-                                        dashArray: '5, 5'
-                                    }}
-                                />
-                            )}
                         </React.Fragment>
                     );
                 })}
 
                 {/* Draw Routes (Lines) */}
+                {/* Draw Routes (Lines) */}
                 {Object.entries(routesByPhotographer).map(([id, items]) => {
                     const p = photographers.find(ph => ph.id === id);
                     const color = p ? getPhotographerColor(p.name, p.color) : '#3b82f6';
+
+                    // Create route points
+                    const routePoints: [number, number][] = items.map(i => [i.latitude, i.longitude]);
+
+                    // If showing base and base exists, prepend it to the route start
+                    if (showPhotographerBase && p && p.baseLat && p.baseLng) {
+                        routePoints.unshift([p.baseLat, p.baseLng]);
+                    }
+
                     return (
                         <Polyline
                             key={id}
-                            positions={items.map(i => [i.latitude, i.longitude])}
+                            positions={routePoints}
                             color={color}
                             weight={3}
                             opacity={0.4}
@@ -213,84 +222,172 @@ export default function DailyRouteMap({ schedule, pending = [], photographers, f
                     );
                 })}
 
-                {/* Draw Markers (Pins) */}
-                {validSchedules.map((s) => {
-                    const p = photographers.find(ph => ph.id === s.photographerId);
+                {/* Draw Markers (Pins) - Unified list for correct offset calculation */}
+                {(() => {
+                    const allMarkers = [
+                        ...validSchedules.map(s => ({ ...s, type: 'scheduled' })),
+                        ...validPending.map(s => ({ ...s, type: 'pending' }))
+                    ];
 
-                    // Priority: Photographer array -> Booking Photographer Relation -> Default
-                    const pName = p?.name || s.photographer?.name || 'Agendamento';
-                    const pColor = getPhotographerColor(pName, p?.color || s.photographer?.color);
+                    return allMarkers.map((s, idx) => {
+                        // Round to 4 decimals for stable collision detection
+                        const sLat = Number(s.latitude).toFixed(4);
+                        const sLng = Number(s.longitude).toFixed(4);
 
-                    const pRoute = routesByPhotographer[s.photographerId] || [];
-                    const markerNumber = pRoute.findIndex(item => item.id === s.id) + 1;
+                        // Find if there are other markers BEFORE this one with same rounded coords in the UNIFIED list
+                        const sameCoordsAt = allMarkers.slice(0, idx).filter(other => {
+                            const oLat = Number(other.latitude).toFixed(4);
+                            const oLng = Number(other.longitude).toFixed(4);
+                            return oLat === sLat && oLng === sLng;
+                        }).length;
 
-                    return (
-                        <Marker
-                            key={`bk-${s.id}`}
-                            position={[s.latitude, s.longitude]}
-                            icon={getMarkerIcon(pColor, markerNumber)}
-                            eventHandlers={{
-                                click: () => onOrderClick(s)
-                            }}
-                        >
-                            <Popup>
-                                <div className="p-1 min-w-[150px]">
-                                    <div className="flex justify-between items-start mb-1">
-                                        <span className="font-bold text-sm">#{markerNumber}</span>
-                                        <span className="text-[10px] font-black text-slate-300">#{s.protocol || s.id.substring(0, 4)}</span>
-                                    </div>
-                                    <div className="font-bold text-slate-800 leading-tight">{s.clientName}</div>
-                                    <div className="text-xs text-slate-500 mt-1 flex items-center gap-1">
-                                        <Camera size={10} className="opacity-50" />
-                                        {s.time} - {pName}
-                                    </div>
-                                    <div className="text-[10px] mt-2 text-slate-400 border-t pt-1 italic">{s.address}</div>
-                                    <button
-                                        onClick={() => onOrderClick(s)}
-                                        className="w-full mt-3 bg-blue-600 text-white text-[10px] font-bold py-1.5 rounded hover:bg-blue-700 transition-colors uppercase tracking-wider"
-                                    >
-                                        Ver Detalhes / Agendar
-                                    </button>
-                                </div>
-                            </Popup>
-                        </Marker>
-                    );
-                })}
+                        // Apply a purely horizontal spread (roughly 50 meters per overlap at this latitude)
+                        // This makes markers clearly "side by side" even at lower zoom levels
+                        const offsetLng = sameCoordsAt * 0.00050;
 
-                {/* Draw Pending Markers (Pins) */}
-                {validPending.map((s) => (
-                    <Marker
-                        key={s.id}
-                        position={[s.latitude, s.longitude]}
-                        icon={getMarkerIcon('#475569', 'P')} // Dark slate grey for pending
-                        eventHandlers={{
-                            click: () => onOrderClick(s)
-                        }}
-                    >
-                        <Popup>
-                            <div className="p-1 min-w-[150px]">
-                                <div className="flex justify-between items-start mb-1">
-                                    <span className="font-bold text-sm text-slate-400">PENDENTE</span>
-                                    <span className="text-[10px] font-black text-slate-300">#{s.protocol || s.id.substring(0, 4)}</span>
-                                </div>
-                                <div className="font-bold text-slate-800 leading-tight">{s.clientName}</div>
-                                <div className="text-xs text-slate-500 mt-1 flex items-center gap-1">
-                                    <Clock size={10} className="opacity-50" />
-                                    A Definir
-                                </div>
-                                <div className="text-[10px] mt-2 text-slate-400 border-t pt-1 italic">{s.address}</div>
-                                <button
-                                    onClick={() => onOrderClick(s)}
-                                    className="w-full mt-3 bg-orange-600 text-white text-[10px] font-bold py-1.5 rounded hover:bg-orange-700 transition-colors uppercase tracking-wider shadow-sm"
+                        if (s.type === 'scheduled') {
+                            const p = photographers.find(ph => ph.id === s.photographerId);
+                            const pName = p?.name || s.photographer?.name || 'Agendamento';
+                            const pColor = getPhotographerColor(pName, p?.color || s.photographer?.color);
+                            const pRoute = routesByPhotographer[s.photographerId] || [];
+                            const markerNumber = pRoute.findIndex(item => item.id === s.id) + 1;
+
+                            return (
+                                <Marker
+                                    key={`bk-${s.id}`}
+                                    position={[s.latitude, s.longitude + offsetLng]}
+                                    icon={getMarkerIcon(pColor, markerNumber, false, s.id === selectedOrderId)}
+                                    zIndexOffset={s.id === selectedOrderId ? 1000 : 0}
+                                    eventHandlers={{
+                                        click: () => onOrderClick(s),
+                                        mouseover: (e) => e.target.openTooltip(),
+                                        mouseout: (e) => e.target.closeTooltip()
+                                    }}
                                 >
-                                    Agendar Agora
-                                </button>
-                            </div>
-                        </Popup>
-                    </Marker>
-                ))}
+                                    <Tooltip direction="top" offset={[0, -20]} opacity={0.9} className="custom-tooltip">
+                                        <div className="text-center">
+                                            <div className="font-bold text-[11px]">{s.clientName}</div>
+                                            <div className="text-[9px] text-slate-500">{s.address}</div>
+                                        </div>
+                                    </Tooltip>
+                                    <Popup>
+                                        <div className="p-2 min-w-[180px]">
+                                            <div className="flex justify-between items-start mb-2 border-b border-slate-100 pb-1">
+                                                <div className="flex flex-col">
+                                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Protocolo</span>
+                                                    <span className="font-bold text-slate-700">#{s.protocol || s.id.substring(0, 4)}</span>
+                                                </div>
+                                                <div className="flex flex-col items-end">
+                                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Horário</span>
+                                                    <span className="font-bold text-blue-600 flex items-center gap-1">
+                                                        <Clock size={10} />
+                                                        {s.time}
+                                                    </span>
+                                                </div>
+                                            </div>
 
-                <SetViewToFitMarkers markers={allCoords} />
+                                            <div className="mb-2">
+                                                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Cliente</div>
+                                                <div className="font-bold text-slate-900 leading-tight">{s.clientName}</div>
+                                            </div>
+
+                                            <div className="mb-2">
+                                                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Localização</div>
+                                                <div className="text-xs text-slate-600 font-medium">{s.neighborhood}</div>
+                                                <div className="text-[10px] text-slate-500 italic leading-tight mt-0.5">{s.address}</div>
+                                            </div>
+
+                                            <div className="mb-3">
+                                                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Serviços</div>
+                                                <div className="flex flex-wrap gap-1">
+                                                    {s.services && s.services.map((svc: string) => (
+                                                        <span key={svc} className="text-[9px] px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded border border-slate-200">
+                                                            {svc}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            <button
+                                                onClick={() => onOrderClick(s)}
+                                                className="w-full mt-2 bg-blue-600 text-white text-[10px] font-bold py-2 rounded hover:bg-blue-700 transition-colors uppercase tracking-wider flex items-center justify-center gap-2"
+                                            >
+                                                <FileText size={12} />
+                                                Ver Detalhes / Editar
+                                            </button>
+                                        </div>
+                                    </Popup>
+                                </Marker>
+                            );
+                        } else {
+                            // Pending Marker
+                            return (
+                                <Marker
+                                    key={`pending-${s.id}`}
+                                    position={[s.latitude, s.longitude + offsetLng]}
+                                    icon={getMarkerIcon('#475569', 'P', false, s.id === selectedOrderId)}
+                                    zIndexOffset={s.id === selectedOrderId ? 1000 : 0}
+                                    eventHandlers={{
+                                        click: () => onOrderClick(s)
+                                    }}
+                                >
+                                    <Popup>
+                                        <div className="p-2 min-w-[180px]">
+                                            <div className="flex justify-between items-start mb-2 border-b border-slate-100 pb-1">
+                                                <div className="flex flex-col">
+                                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Protocolo</span>
+                                                    <span className="font-bold text-slate-700">#{s.protocol || s.id.substring(0, 4)}</span>
+                                                </div>
+                                                <div className="flex flex-col items-end">
+                                                    <span className="text-[10px] font-black text-orange-400 uppercase tracking-widest">Status</span>
+                                                    <span className="font-bold text-orange-600 text-[10px]">PENDENTE</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="mb-2">
+                                                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Cliente</div>
+                                                <div className="font-bold text-slate-900 leading-tight">{s.clientName}</div>
+                                            </div>
+
+                                            <div className="mb-2">
+                                                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Localização</div>
+                                                <div className="text-xs text-slate-600 font-medium">{s.neighborhood}</div>
+                                                <div className="text-[10px] text-slate-500 italic leading-tight mt-0.5">{s.address}</div>
+                                            </div>
+
+                                            <div className="mb-3">
+                                                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Serviços</div>
+                                                <div className="flex flex-wrap gap-1">
+                                                    {s.services && s.services.map((svc: string) => (
+                                                        <span key={svc} className="text-[9px] px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded border border-slate-200">
+                                                            {svc}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            <button
+                                                onClick={() => onOrderClick(s)}
+                                                className="w-full mt-2 bg-orange-600 text-white text-[10px] font-bold py-2 rounded hover:bg-orange-700 transition-colors uppercase tracking-wider flex items-center justify-center gap-2"
+                                            >
+                                                <Clock size={12} />
+                                                Agendar Agora
+                                            </button>
+                                        </div>
+                                    </Popup>
+                                </Marker>
+                            );
+                        }
+                    });
+                })()}
+
+                })()}
+
+                <SetViewToFitMarkers
+                    markers={allCoords}
+                    selectedId={selectedOrderId}
+                    allItems={[...validSchedules, ...validPending]}
+                />
             </MapContainer>
         </div>
     );

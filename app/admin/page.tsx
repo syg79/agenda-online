@@ -387,9 +387,12 @@ function GeolocationConfig({ photographer, onUpdate }: { photographer: any, onUp
     const [radius, setRadius] = useState(photographer.travelRadius || 15);
     const [color, setColor] = useState(photographer.color || '#3B82F6');
     const [baseAddress, setBaseAddress] = useState(photographer.baseAddress || '');
+    const [suggestions, setSuggestions] = useState<string[]>([]);
+    const [isSearchingSuggestions, setIsSearchingSuggestions] = useState(false);
     const [addressSearch, setAddressSearch] = useState('');
     const [isSearching, setIsSearching] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const searchTimeout = React.useRef<NodeJS.Timeout | null>(null);
 
     // Reset state when photographer changes
     useEffect(() => {
@@ -400,6 +403,53 @@ function GeolocationConfig({ photographer, onUpdate }: { photographer: any, onUp
         setBaseAddress(photographer.baseAddress || '');
         setAddressSearch('');
     }, [photographer.id]);
+
+    const handleAddressInput = (value: string) => {
+        setAddressSearch(value);
+        setSuggestions([]);
+
+        if (searchTimeout.current) {
+            clearTimeout(searchTimeout.current);
+        }
+
+        if (value.length > 3) {
+            setIsSearchingSuggestions(true);
+            searchTimeout.current = setTimeout(async () => {
+                try {
+                    const response = await fetch(`/api/address/search?q=${encodeURIComponent(value)}`);
+                    const data = await response.json();
+                    setSuggestions(data.suggestions || []);
+                } catch (error) {
+                    console.error('Failed to fetch address suggestions:', error);
+                } finally {
+                    setIsSearchingSuggestions(false);
+                }
+            }, 400);
+        }
+    };
+
+    const selectSuggestion = async (suggestion: string) => {
+        setAddressSearch(suggestion);
+        setSuggestions([]);
+        setIsSearching(true);
+        try {
+            const response = await fetch('/api/address/validate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ address: suggestion }),
+            });
+            const data = await response.json();
+            if (data.latitude && data.longitude) {
+                setLat(data.latitude);
+                setLng(data.longitude);
+                setBaseAddress(suggestion);
+            }
+        } catch (error) {
+            alert('Erro ao validar sugestão.');
+        } finally {
+            setIsSearching(false);
+        }
+    };
 
     const handleSearch = async () => {
         if (!addressSearch) return;
@@ -460,134 +510,172 @@ function GeolocationConfig({ photographer, onUpdate }: { photographer: any, onUp
     };
 
     return (
-        <div className="space-y-6 max-w-lg">
-            <div>
-                <h3 className="text-xl font-bold text-slate-800 mb-1">{photographer.name}</h3>
-                <p className="text-sm text-slate-500">Configuração de Ponto Base e Raio de Atendimento</p>
-            </div>
-
-            {/* Address Search Helper */}
-            <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
-                <label className="block text-sm font-bold text-blue-900 mb-2">Preencher via Endereço</label>
-                <div className="flex gap-2">
-                    <input
-                        type="text"
-                        value={addressSearch}
-                        onChange={(e) => setAddressSearch(e.target.value)}
-                        placeholder="Ex: Rua XV de Novembro, 1000"
-                        className="flex-1 px-3 py-2 text-sm border border-blue-200 rounded focus:ring-2 focus:ring-blue-500"
-                        onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                    />
-                    <button
-                        onClick={handleSearch}
-                        disabled={isSearching}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium disabled:opacity-50"
-                    >
-                        {isSearching ? '...' : 'Buscar'}
-                    </button>
-                </div>
-                <p className="text-xs text-blue-600 mt-2">Busca automática no Google Maps (Curitiba).</p>
-            </div>
-
-            {/* Color and Status */}
-            <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-8 max-w-2xl">
+            <div className="flex justify-between items-center border-b pb-4">
                 <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-1">Cor no Mapa</label>
-                    <div className="flex gap-2">
-                        <input
-                            type="color"
-                            value={color}
-                            onChange={(e) => setColor(e.target.value)}
-                            className="w-12 h-10 p-1 rounded border overflow-hidden cursor-pointer"
-                        />
-                        <input
-                            type="text"
-                            value={color}
-                            onChange={(e) => setColor(e.target.value)}
-                            className="flex-1 px-3 py-2 text-sm border rounded uppercase font-mono"
-                        />
-                    </div>
+                    <h3 className="text-xl font-bold text-slate-800">{photographer.name}</h3>
+                    <p className="text-sm text-slate-500">Configuração de logística e presença no mapa</p>
                 </div>
-                <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-1">Identificador</label>
-                    <div className="w-full h-10 px-3 flex items-center bg-slate-50 border rounded text-slate-400 text-sm font-mono truncate">
-                        {photographer.id}
-                    </div>
-                </div>
-            </div>
-
-            {/* Base Address Display */}
-            <div>
-                <label className="block text-sm font-bold text-slate-700 mb-1">Endereço Residencial (Base)</label>
-                <textarea
-                    value={baseAddress}
-                    onChange={(e) => setBaseAddress(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-blue-500 bg-slate-50 font-medium"
-                    rows={2}
-                    placeholder="Endereço principal de partida do fotógrafo..."
-                />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-                <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Latitude</label>
-                    <input
-                        type="number"
-                        step="any"
-                        value={lat}
-                        onChange={(e) => setLat(e.target.value)}
-                        className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500"
-                    />
-                </div>
-                <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Longitude</label>
-                    <input
-                        type="number"
-                        step="any"
-                        value={lng}
-                        onChange={(e) => setLng(e.target.value)}
-                        className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500"
-                    />
-                </div>
-            </div>
-
-            <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Raio de Atendimento (Km)</label>
-                <div className="flex items-center gap-4">
-                    <input
-                        type="range"
-                        min="1"
-                        max="100"
-                        value={radius}
-                        onChange={(e) => setRadius(parseInt(e.target.value))}
-                        className="flex-1"
-                    />
-                    <div className="w-16 px-3 py-2 border rounded text-center bg-slate-50 font-bold text-slate-700">
-                        {radius}
-                    </div>
-                </div>
-                <p className="text-xs text-slate-500 mt-1">Distância máxima em linha reta (Haversine) que o fotógrafo atende a partir do ponto base.</p>
-            </div>
-
-            <div className="pt-4 border-t flex items-center justify-between">
-                {lat && lng && (
-                    <a
-                        href={`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-blue-600 hover:underline text-sm flex items-center gap-1"
-                    >
-                        Ver no Mapa ↗
-                    </a>
-                )}
                 <button
                     onClick={handleSave}
                     disabled={isSaving}
-                    className="bg-green-600 hover:bg-green-700 text-white px-6 py-2.5 rounded-lg font-bold shadow-sm transition hover:-translate-y-0.5 disabled:opacity-50 disabled:transform-none"
+                    className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-bold shadow-sm transition disabled:opacity-50"
                 >
-                    {isSaving ? 'Salvando...' : 'Salvar Configuração'}
+                    {isSaving ? 'Salvando...' : 'Salvar Tudo'}
                 </button>
             </div>
+
+            {/* SEÇÃO 1: PONTO BASE (CASA DO FOTÓGRAFO) */}
+            <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="bg-slate-50 px-6 py-3 border-b flex items-center gap-2">
+                    <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center text-blue-600">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>
+                    </div>
+                    <div>
+                        <h4 className="font-bold text-slate-800 leading-none">Ponto Base (Casa / Início)</h4>
+                        <p className="text-[11px] text-slate-400 mt-1 uppercase font-black tracking-wider">Referência para o Pino Zero</p>
+                    </div>
+                </div>
+
+                <div className="p-6 space-y-6">
+                    {/* Buscador com Autocomplete */}
+                    <div className="relative">
+                        <label className="block text-sm font-bold text-slate-700 mb-2">Buscar Endereço</label>
+                        <div className="flex gap-2">
+                            <div className="relative flex-1">
+                                <input
+                                    type="text"
+                                    value={addressSearch}
+                                    onChange={(e) => handleAddressInput(e.target.value)}
+                                    placeholder="Comece a digitar o endereço comercial ou residencial..."
+                                    className="w-full px-4 py-2.5 text-sm border rounded-xl focus:ring-2 focus:ring-blue-500 shadow-sm"
+                                />
+                                {isSearchingSuggestions && (
+                                    <div className="absolute right-3 top-2.5">
+                                        <div className="animate-spin h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+                                    </div>
+                                )}
+                            </div>
+                            <button
+                                onClick={handleSearch}
+                                disabled={isSearching}
+                                className="bg-slate-800 text-white px-5 rounded-xl text-sm font-bold hover:bg-slate-900 transition disabled:opacity-50"
+                            >
+                                {isSearching ? '...' : 'Fixar'}
+                            </button>
+                        </div>
+
+                        {/* Dropdown de Sugestões */}
+                        {suggestions.length > 0 && (
+                            <div className="absolute z-50 w-full mt-1 bg-white border rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                                {suggestions.map((s, i) => (
+                                    <button
+                                        key={i}
+                                        onClick={() => selectSuggestion(s)}
+                                        className="w-full text-left px-4 py-3 text-sm hover:bg-blue-50 border-b last:border-0 transition-colors flex items-center gap-3"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-300"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" /><circle cx="12" cy="10" r="3" /></svg>
+                                        <span className="text-slate-700 font-medium">{s}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-6 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                        <div>
+                            <label className="block text-[11px] font-black text-slate-400 uppercase mb-1">Coordenadas Atuais</label>
+                            <div className="flex items-center gap-2 font-mono text-sm text-slate-600 bg-white px-3 py-2 rounded-lg border">
+                                <span className="opacity-40">LAT</span> {lat || '---'}
+                                <span className="mx-1 opacity-20">|</span>
+                                <span className="opacity-40">LNG</span> {lng || '---'}
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-[11px] font-black text-slate-400 uppercase mb-1">Visualização</label>
+                            {lat && lng ? (
+                                <a
+                                    href={`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm font-bold bg-white px-4 py-2 rounded-lg border shadow-sm transition"
+                                >
+                                    Abrir Google Maps ↗
+                                </a>
+                            ) : (
+                                <div className="text-slate-300 text-sm py-2 italic">Aguardando coordenadas...</div>
+                            )}
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-bold text-slate-700 mb-2">Endereço Confirmado (Base)</label>
+                        <textarea
+                            value={baseAddress}
+                            onChange={(e) => setBaseAddress(e.target.value)}
+                            readOnly
+                            className="w-full px-4 py-3 text-sm border rounded-xl bg-slate-50 text-slate-500 italic"
+                            rows={2}
+                            placeholder="Selecione um endereço nas sugestões acima..."
+                        />
+                    </div>
+                </div>
+            </section>
+
+            {/* SEÇÃO 2: ÁREA DE ATUAÇÃO E IDENTIFICAÇÃO */}
+            <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="bg-slate-50 px-6 py-3 border-b flex items-center gap-2">
+                    <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center text-orange-600">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="m4.93 4.93 14.14 14.14" /></svg>
+                    </div>
+                    <div>
+                        <h4 className="font-bold text-slate-800 leading-none">Área de Atuação (Geolocalização)</h4>
+                        <p className="text-[11px] text-slate-400 mt-1 uppercase font-black tracking-wider">Raio e Identificação</p>
+                    </div>
+                </div>
+
+                <div className="p-6 space-y-8">
+                    <div className="grid grid-cols-2 gap-8">
+                        <div>
+                            <label className="block text-sm font-bold text-slate-700 mb-3">Cor de Identificação</label>
+                            <div className="flex gap-4 p-3 bg-slate-50 rounded-xl border">
+                                <input
+                                    type="color"
+                                    value={color}
+                                    onChange={(e) => setColor(e.target.value)}
+                                    className="w-16 h-12 p-1 rounded-lg border overflow-hidden cursor-pointer bg-white"
+                                />
+                                <input
+                                    type="text"
+                                    value={color}
+                                    onChange={(e) => setColor(e.target.value)}
+                                    className="flex-1 px-4 py-2 text-sm border rounded-lg bg-white uppercase font-mono font-bold text-slate-700 shadow-inner"
+                                />
+                            </div>
+                            <p className="text-[10px] text-slate-400 mt-2 italic">* Cor usada nos pinos e rotas deste fotógrafo.</p>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-bold text-slate-700 mb-3">Raio de Atendimento (km)</label>
+                            <div className="bg-slate-50 p-6 rounded-xl border">
+                                <div className="flex items-center gap-4 mb-3">
+                                    <input
+                                        type="range"
+                                        min="1"
+                                        max="100"
+                                        value={radius}
+                                        onChange={(e) => setRadius(parseInt(e.target.value))}
+                                        className="flex-1 h-2 bg-blue-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                    />
+                                    <div className="w-16 h-10 flex items-center justify-center bg-white border border-blue-200 rounded-lg shadow-sm font-black text-blue-700">
+                                        {radius}
+                                    </div>
+                                </div>
+                                <p className="text-[10px] text-slate-500 leading-tight">Agendamentos fora deste raio a partir da Base alertarão a secretaria.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
         </div>
     );
 }

@@ -17,14 +17,14 @@ export function cn(...inputs: ClassValue[]) {
 // ================================
 export function formatPhone(phone: string): string {
   const cleaned = phone.replace(/\D/g, '')
-  
+
   if (cleaned.length === 11) {
     return `(${cleaned.slice(0, 2)}) ${cleaned.slice(2, 7)}-${cleaned.slice(7)}`
   }
   if (cleaned.length === 10) {
     return `(${cleaned.slice(0, 2)}) ${cleaned.slice(2, 6)}-${cleaned.slice(6)}`
   }
-  
+
   return phone
 }
 
@@ -71,10 +71,10 @@ export function calculateTotalDuration(serviceIds: ServiceId[]): number {
 export function calculateEndTime(startTime: string, durationMinutes: number): string {
   const [hours, minutes] = startTime.split(':').map(Number)
   const totalMinutes = hours * 60 + minutes + durationMinutes
-  
+
   const endHours = Math.floor(totalMinutes / 60)
   const endMinutes = totalMinutes % 60
-  
+
   return `${endHours.toString().padStart(2, '0')}:${endMinutes.toString().padStart(2, '0')}`
 }
 
@@ -102,7 +102,7 @@ export function generateProtocol(): string {
   const month = (now.getMonth() + 1).toString().padStart(2, '0')
   const day = now.getDate().toString().padStart(2, '0')
   const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0')
-  
+
   return `AG${year}${month}${day}${random}`
 }
 
@@ -112,11 +112,11 @@ export function generateProtocol(): string {
 export function generateCancellationToken(): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
   let token = ''
-  
+
   for (let i = 0; i < 32; i++) {
     token += chars.charAt(Math.floor(Math.random() * chars.length))
   }
-  
+
   return token
 }
 
@@ -157,10 +157,10 @@ export function calculateCancellationFee(
   const [hours, minutes] = scheduledTime.split(':').map(Number)
   const scheduledDateTime = new Date(scheduledDate)
   scheduledDateTime.setHours(hours, minutes, 0, 0)
-  
+
   const now = new Date()
   const hoursUntilBooking = (scheduledDateTime.getTime() - now.getTime()) / (1000 * 60 * 60)
-  
+
   if (hoursUntilBooking < 2) {
     return {
       fee: serviceTotalValue,
@@ -169,7 +169,7 @@ export function calculateCancellationFee(
       message: 'Não é possível cancelar online com menos de 2h de antecedência. Entre em contato por telefone.',
     }
   }
-  
+
   if (hoursUntilBooking < 12) {
     return {
       fee: serviceTotalValue,
@@ -178,7 +178,7 @@ export function calculateCancellationFee(
       message: 'Taxa de 100% será aplicada (menos de 12h de antecedência)',
     }
   }
-  
+
   if (hoursUntilBooking < 24) {
     return {
       fee: serviceTotalValue * 0.5,
@@ -187,7 +187,7 @@ export function calculateCancellationFee(
       message: 'Taxa de 50% será aplicada (entre 12-24h de antecedência)',
     }
   }
-  
+
   return {
     fee: 0,
     percentage: 0,
@@ -209,10 +209,10 @@ export function getAvailableDates(daysAhead: number = 30): Date[] {
   const dates: Date[] = []
   const today = new Date()
   today.setHours(0, 0, 0, 0)
-  
+
   // Começa no dia seguinte (mínimo 24h de antecedência)
   let currentDate = addDays(today, 1)
-  
+
   while (dates.length < daysAhead) {
     // Ignora domingos
     if (!isSunday(currentDate)) {
@@ -220,7 +220,7 @@ export function getAvailableDates(daysAhead: number = 30): Date[] {
     }
     currentDate = addDays(currentDate, 1)
   }
-  
+
   return dates
 }
 
@@ -233,4 +233,16 @@ export function getServicesRequiringDrone(serviceIds: ServiceId[]): boolean {
 
 export function getServicesRequiringVideo(serviceIds: ServiceId[]): boolean {
   return serviceIds.some(id => id.startsWith('video'))
+}
+
+// ================================
+// FOTÓGRAFOS
+// ================================
+export function getPhotographerColor(name: string, currentColor: string | null) {
+  const n = name.toLowerCase()
+  if (n.includes('augusto')) return '#EF4444' // Red
+  if (n.includes('renato')) return '#F97316' // Orange
+  if (n.includes('rodrigo')) return '#0EA5E9' // Light Blue
+  if (n.includes('rafael')) return '#22D3EE' // Cyan
+  return currentColor || '#3B82F6'
 }

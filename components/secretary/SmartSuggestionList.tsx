@@ -55,14 +55,6 @@ export function SmartSuggestionList({ targetLat, targetLng, currentDate, onSelec
 
     return (
         <div className="bg-white border-l border-slate-200 h-full flex flex-col w-72 shadow-xl overflow-hidden min-w-[288px]">
-            <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-100">
-                <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                    <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
-                    Sugestões Inteligentes
-                </h3>
-                <p className="text-xs text-slate-500 mt-1">Baseado na rota dos fotógrafos</p>
-            </div>
-
             <div className="flex-1 overflow-y-auto p-3 space-y-3">
                 {opportunities.map((opp, idx) => {
                     const isPending = opp.photographer.id === 'PENDING';

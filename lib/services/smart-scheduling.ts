@@ -54,14 +54,13 @@ export async function findSchedulingOpportunities(
     durationMin: number = DEFAULT_DURATION_MIN
 ): Promise<SchedulingOpportunity[]> {
     const opportunities: SchedulingOpportunity[] = [];
-    const date = new Date(dateStr);
 
     // 1. Fetch all confirmed bookings for the day
     // We need to see where photographers ALREADY are.
     const startOfDay = new Date(dateStr); startOfDay.setUTCHours(0, 0, 0, 0);
     const endOfDay = new Date(dateStr); endOfDay.setUTCHours(23, 59, 59, 999);
 
-    const bookings = await prisma.booking.findMany({
+    const bookings = await (prisma as any).booking.findMany({
         where: {
             date: { gte: startOfDay, lte: endOfDay },
             status: 'CONFIRMED',
@@ -75,7 +74,7 @@ export async function findSchedulingOpportunities(
     });
 
     // 2. Fetch Pending bookings (to cluster unassigned)
-    const pending = await prisma.booking.findMany({
+    const pending = await (prisma as any).booking.findMany({
         where: {
             status: { not: 'CANCELED' },
             photographerId: null,
@@ -127,12 +126,6 @@ export async function findSchedulingOpportunities(
             });
 
             // B. Gap BEFORE
-            // Existing: 10:00
-            // New Job Duration: 60m
-            // Travel: 20m
-            // Buffer: 15m
-            // Must finish by: 10:00 - Travel - Buffer = 09:25
-            // Start: 09:25 - 60m = 08:25
             const finishBy = subMinutes(existingStart, travelTime + 15);
             const startBefore = subMinutes(finishBy, durationMin);
 
@@ -183,8 +176,93 @@ export async function findSchedulingOpportunities(
         }
     }
 
-    // Sort by Score (Desc)
-    return opportunities.sort((a, b) => b.score - a.score);
+    // Sort by Distance ASC (Closest first)
+    return opportunities.sort((a, b) => a.distanceKm - b.distanceKm);
+}
+
+// 5. Find Orders for a specific Slot (Reverse Logic)
+export async function findOrdersForSlot(
+    photographerId: string,
+    dateStr: string,
+    timeStr: string
+) {
+    const startOfDay = new Date(dateStr); startOfDay.setUTCHours(0, 0, 0, 0);
+    const endOfDay = new Date(dateStr); endOfDay.setUTCHours(23, 59, 59, 999);
+
+    // 1. Get Context (Photographer Schedule & Base)
+    const photographer = await (prisma as any).photographer.findUnique({
+        where: { id: photographerId },
+        select: { baseLat: true, baseLng: true, baseAddress: true }
+    });
+
+    if (!photographer) throw new Error('Photographer not found');
+
+    const schedule = await (prisma as any).booking.findMany({
+        where: {
+            photographerId,
+            date: { gte: startOfDay, lte: endOfDay },
+            status: { not: 'CANCELED' },
+            latitude: { not: null },
+            longitude: { not: null }
+        },
+        orderBy: { time: 'asc' }
+    });
+
+    // 2. Determine Logistical Reference Point
+    // Find the job immediately BEFORE the target time to set the "Start Point"
+    // If no job before, use Base.
+    let originLat = photographer.baseLat;
+    let originLng = photographer.baseLng;
+    let originLabel = 'Base (Casa)';
+
+    const targetTimeVal = parseInt(timeStr.replace(':', '')); // e.g., 900, 1430
+
+    let prevBooking = null;
+    let nextBooking = null;
+
+    for (const b of schedule) {
+        const bTimeVal = parseInt(b.time.replace(':', ''));
+        if (bTimeVal < targetTimeVal) {
+            prevBooking = b;
+        } else if (bTimeVal > targetTimeVal && !nextBooking) {
+            nextBooking = b;
+        }
+    }
+
+    if (prevBooking && prevBooking.latitude && prevBooking.longitude) {
+        originLat = prevBooking.latitude;
+        originLng = prevBooking.longitude;
+        originLabel = `Saída de: ${prevBooking.clientName} (${prevBooking.neighborhood})`;
+    }
+
+    if (!originLat || !originLng) return [];
+
+    // 3. Fetch Pending Orders
+    const pending = await (prisma as any).booking.findMany({
+        where: {
+            status: 'PENDING',
+            photographerId: null,
+            latitude: { not: null },
+            longitude: { not: null }
+        },
+        take: 50
+    });
+
+    // 4. Score and Sort
+    const suggestions = pending.map((p: any) => {
+        if (!p.latitude || !p.longitude) return null;
+
+        const dist = calculateDistance(originLat!, originLng!, p.latitude, p.longitude);
+
+        return {
+            ...p,
+            distanceKm: parseFloat(dist.toFixed(1)),
+            travelTimeMin: Math.ceil(dist * 2), // Rough estimate
+            originLabel
+        };
+    }).filter(Boolean).sort((a: any, b: any) => (a?.distanceKm || 999) - (b?.distanceKm || 999));
+
+    return suggestions;
 }
 
 // --- Helpers ---

@@ -33,39 +33,66 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        // 2. Update Booking
-        const updated = await (prisma as any).booking.update({
-            where: { id: bookingId },
-            data: {
-                photographerId,
-                date: targetDate,
-                time,
-                status: 'CONFIRMED',
-                updatedAt: new Date(),
-            },
-            include: {
-                photographer: true,
-            },
-        });
+    }
 
-        // 3. Sync with Tadabase
+        // 2. Update Booking (LOCAL DB will be updated so UI works)
+        const updated = await (prisma as any).booking.update({
+        where: { id: bookingId },
+        data: {
+            photographerId,
+            date: targetDate,
+            time,
+            status: 'CONFIRMED',
+            updatedAt: new Date(),
+        },
+        include: {
+            photographer: true,
+        },
+    });
+
+    // --- SANDBOX SAFETY ---
+    const SANDBOX_MODE = true; // TRUE = Data stays local, NO SYNC to Tadabase
+
+    if (!SANDBOX_MODE) {
+        // 3. Sync with Tadabase (Only if sandbox is OFF)
         try {
             await tadabase.syncBooking(updated);
         } catch (syncError) {
             console.error('Falha ao sincronizar com Tadabase:', syncError);
-            // Don't fail the request, just log it.
         }
-
-        return NextResponse.json({
-            success: true,
-            booking: updated,
-        });
-
-    } catch (error: any) {
-        console.error('Erro ao atribuir agendamento:', error);
-        return NextResponse.json(
-            { error: 'Falha interna ao processar agendamento.' },
-            { status: 500 }
-        );
+    } else {
+        console.log(' [SANDBOX] Saved locally, but Tadabase sync skipped.');
     }
+    data: {
+        photographerId,
+            date: targetDate,
+                time,
+                status: 'CONFIRMED',
+                    updatedAt: new Date(),
+        },
+    include: {
+        photographer: true,
+        },
+});
+
+// 3. Sync with Tadabase
+try {
+    await tadabase.syncBooking(updated);
+} catch (syncError) {
+    console.error('Falha ao sincronizar com Tadabase:', syncError);
+    // Don't fail the request, just log it.
+}
+
+return NextResponse.json({
+    success: true,
+    booking: updated,
+});
+
+} catch (error: any) {
+    console.error('Erro ao atribuir agendamento:', error);
+    return NextResponse.json(
+        { error: 'Falha interna ao processar agendamento.' },
+        { status: 500 }
+    );
+}
 }

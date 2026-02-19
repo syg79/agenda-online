@@ -9,83 +9,66 @@ datasource db {
 }
 
 model Booking {
-  id        String   @id @default(uuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  protocol String @unique
-  status   String @default("CONFIRMED") // CONFIRMED, CANCELED, COMPLETED
-
-  // Dados do cliente
-  clientName  String
-  clientEmail String
-  clientPhone String
-
-  // Endereço
-  address      String
-  neighborhood String
-  city         String   @default("Curitiba")
-  state        String   @default("PR")
-  zipCode      String?
-  complement   String?  // Complemento (Apto, Bloco, etc.)
-  latitude     Float?   // Phase 5
-  longitude    Float?   // Phase 5
-
-  // Detalhes do Serviço
-  services String[] // Array de strings (ex: ["Fotos HDR", "Drone"])
-  notes    String?
-
-  // Agendamento
-  date     DateTime // Data do serviço
-  time     String   // Horário (ex: "14:30")
-  duration Int      // Duração total em minutos
-
-  // Financeiro
-  price         Decimal? @db.Decimal(10, 2)
-  paymentStatus String   @default("PENDING") // PENDING, PAID, PARTIAL
-
-  // Relacionamento com Fotógrafo
+  id             String        @id @default(uuid())
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  protocol       String        @unique
+  status         String        @default("CONFIRMED")
+  clientName     String
+  clientEmail    String
+  clientPhone    String
+  address        String
+  neighborhood   String
+  services       String[]
+  notes          String?
+  date           DateTime
+  time           String
+  duration       Int
+  price          Decimal?      @db.Decimal(10, 2)
+  paymentStatus  String        @default("PENDING")
   photographerId String?
+  city           String        @default("Curitiba")
+  complement     String?
+  latitude       Float?
+  longitude      Float?
+  state          String        @default("PR")
+  zipCode        String?
+  brokerDetails  String?       // field_177 from Tadabase (Name + Phone)
   photographer   Photographer? @relation(fields: [photographerId], references: [id])
 }
 
 model Photographer {
-  id        String   @id @default(uuid())
-  name      String
-  email     String   @unique
-  active    Boolean  @default(true)
-  services  String[] // ["photo", "video", "drone"]
-  neighborhoods Json? // Structure: { "photo": ["Batel"], "video": ["ALL"] }
-  
-  // Phase 5: Geolocation
+  id            String               @id @default(uuid())
+  name          String
+  email         String               @unique
+  active        Boolean              @default(true)
+  services      String[]
+  baseLat       Float?               @default(-25.4284)
+  baseLng       Float?               @default(-49.2733)
+  color         String               @default("#3B82F6")
   latitude      Float?
   longitude     Float?
-  travelRadius  Int?     @default(15) // km
-  
-  // Phase 8: Smart Scheduling (SQL-Centric)
-  color         String   @default("#3B82F6")
+  neighborhoods Json?
+  travelRadius  Int?                 @default(15)
   baseAddress   String?
-  baseLat       Float?   @default(-25.4284)
-  baseLng       Float?   @default(-49.2733)
-
-  bookings  Booking[]
-  timeBlocks TimeBlock[]
-  regions   PhotographerRegion[]
-  preferences ClientPreference[]
+  bookings      Booking[]
+  preferences   ClientPreference[]
+  regions       PhotographerRegion[]
+  timeBlocks    TimeBlock[]
 }
 
 model CoverageArea {
-  id        String   @id @default(uuid())
+  id        String  @id @default(uuid())
   name      String
-  areaType  String   @default("auto") // 'auto' | 'manual'
+  areaType  String  @default("auto")
   centerLat Float
   centerLng Float
-  radiusKm  Float    @default(20)
-  isActive  Boolean  @default(true)
+  radiusKm  Float   @default(20)
+  isActive  Boolean @default(true)
 }
 
 model TimeBlock {
-  id             String   @id @default(uuid())
+  id             String       @id @default(uuid())
   photographerId String
   date           DateTime
   startTime      String
@@ -94,64 +77,56 @@ model TimeBlock {
   photographer   Photographer @relation(fields: [photographerId], references: [id])
 }
 
-// --- PHASE 3: ADVANCED MANAGEMENT ---
-
 model Client {
-  id          String   @id @default(uuid())
+  id          String             @id @default(uuid())
   name        String
-  email       String   @unique
+  email       String             @unique
   phone       String?
-  // Preferences
   preferences ClientPreference[]
 }
 
 model ClientPreference {
-  id             String @id @default(uuid())
+  id             String       @id @default(uuid())
   clientId       String
   photographerId String
-  priority       Int    // 1 = High, 2 = Medium...
-  
+  priority       Int
   client         Client       @relation(fields: [clientId], references: [id])
   photographer   Photographer @relation(fields: [photographerId], references: [id])
-  
+
   @@unique([clientId, photographerId])
 }
 
 model Region {
-  id             String   @id @default(uuid())
-  name           String   // e.g., "Zona Sul", "Centro"
-  cities         String[] // e.g., ["Curitiba", "São José dos Pinhais"]
-  neighborhoods  String[] // e.g., ["Batel", "Água Verde"] (Optional filter)
-  
-  photographers  PhotographerRegion[]
+  id            String               @id @default(uuid())
+  name          String
+  cities        String[]
+  neighborhoods String[]
+  photographers PhotographerRegion[]
 }
 
 model PhotographerRegion {
   photographerId String
   regionId       String
-  
   photographer   Photographer @relation(fields: [photographerId], references: [id])
   region         Region       @relation(fields: [regionId], references: [id])
-  
+
   @@id([photographerId, regionId])
 }
 
-// --- PHASE 6: ROUTING CACHE ---
 model RouteCache {
   id          String   @id @default(uuid())
-  origin      String   // "lat,lng" (e.g., "-25.42,-49.27")
-  destination String   // "lat,lng"
-  distance    Float    // km
-  duration    Float    // minutes
+  origin      String
+  destination String
+  distance    Float
+  duration    Float
   updatedAt   DateTime @updatedAt
 
   @@unique([origin, destination])
 }
 
-// --- PHASE 6: DYNAMIC COORDINATES ---
 model CepLocation {
   id           String   @id @default(uuid())
-  zipCode      String   @unique // The exact CEP (e.g. "80240-010")
+  zipCode      String   @unique
   latitude     Float
   longitude    Float
   neighborhood String?
