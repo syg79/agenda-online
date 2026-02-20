@@ -94,7 +94,7 @@ async function atualizarTadabase(recordId: string, link: string) {
   console.log('APP_SECRET:', process.env.TADABASE_APP_SECRET ? 'OK' : 'AUSENTE');
 
   const response = await fetch(url, {
-    method: 'PUT',
+    method: 'POST',
     headers: {
       'X-Tadabase-App-id': process.env.TADABASE_APP_ID!,
       'X-Tadabase-App-Key': process.env.TADABASE_APP_KEY!,
