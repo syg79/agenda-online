@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
 }
 
 async function atualizarTadabase(recordId: string, link: string) {
-  const url = `${process.env.TADABASE_API_URL}/data-pages/${TADABASE_APP_ID}/data-tables/${TADABASE_TABLE}/records/${recordId}`;
+  const url = `${process.env.TADABASE_API_URL}/data-tables/${TADABASE_TABLE}/records/${recordId}`;
 
   const response = await fetch(url, {
     method: 'PUT',
