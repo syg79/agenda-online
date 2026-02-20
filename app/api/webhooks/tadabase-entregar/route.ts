@@ -86,6 +86,9 @@ export async function POST(request: NextRequest) {
 }
 
 async function atualizarTadabase(recordId: string, link: string) {
+  console.log('APP_ID:', process.env.TADABASE_APP_ID);
+  console.log('APP_KEY:', process.env.TADABASE_APP_KEY ? 'OK' : 'AUSENTE');
+  console.log('APP_SECRET:', process.env.TADABASE_APP_SECRET ? 'OK' : 'AUSENTE');
   const url = `https://api.tadabase.io/api/v1/data-tables/${TADABASE_TABLE}/records/${recordId}`;
 
   const response = await fetch(url, {
