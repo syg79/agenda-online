@@ -8,6 +8,7 @@
 //   field_233  → Código do imóvel (pasta final compartilhada)
 //   field_384  → Nome para o assunto do email
 //   field_245  → Campo onde o link é salvo de volta no Tadabase
+// await atualizarTadabase(recordId, linkPublico);
 
 import { NextRequest, NextResponse } from 'next/server';
 import { garantirPasta, compartilharComEmail, obterLinkPublico } from '@/lib/google-drive';
