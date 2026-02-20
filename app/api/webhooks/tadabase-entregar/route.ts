@@ -16,21 +16,21 @@ import { criarRascunho } from '@/lib/gmail';
 const PASTA_ENTREGA_RAIZ = '1aXGLidGiePZMTp2vkEHNKZCJFZM2-wBQ';
 const EMAIL_INTERNO = 'vitrinedoimovel@gmail.com';
 
-const TADABASE_APP_ID   = process.env.TADABASE_APP_ID!;
-const TADABASE_API_KEY  = process.env.TADABASE_API_KEY!;
-const TADABASE_SECRET   = process.env.TADABASE_API_SECRET!;
-const TADABASE_TABLE    = 'o6WQb5NnBZ';
+const TADABASE_APP_ID = process.env.TADABASE_APP_ID!;
+const TADABASE_API_KEY = process.env.TADABASE_API_KEY!;
+const TADABASE_SECRET = process.env.TADABASE_API_SECRET!;
+const TADABASE_TABLE = 'o6WQb5NnBZ';
 
 export async function POST(request: NextRequest) {
   try {
     const payload = await request.json();
 
-    const nomeCliente  = payload.field_427;
-    const referencia   = payload.field_425;
-    const nomeImovel   = payload.field_426;
+    const nomeCliente = payload.field_427;
+    const referencia = payload.field_425;
+    const nomeImovel = payload.field_426;
     const codigoImovel = payload.field_233;
-    const nomeEmail    = payload.field_384;
-    const recordId     = payload.id;
+    const nomeEmail = payload.field_384;
+    const recordId = payload.id;
 
     if (!nomeCliente || !referencia || !nomeImovel || !codigoImovel) {
       return NextResponse.json(
@@ -40,18 +40,26 @@ export async function POST(request: NextRequest) {
     }
 
     // 1. Monta a hierarquia de pastas
-    const pastaCliente    = await garantirPasta(nomeCliente, PASTA_ENTREGA_RAIZ);
+    const pastaCliente = await garantirPasta(nomeCliente, PASTA_ENTREGA_RAIZ);
     const pastaReferencia = await garantirPasta(referencia, pastaCliente.id);
-    const pastaImovel     = await garantirPasta(nomeImovel, pastaReferencia.id);
-    const pastaFinal      = await garantirPasta(codigoImovel, pastaImovel.id);
+    const pastaImovel = await garantirPasta(nomeImovel, pastaReferencia.id);
+    const pastaFinal = await garantirPasta(codigoImovel, pastaImovel.id);
 
     // 2. Compartilhamentos
     await compartilharComEmail(pastaFinal.id, EMAIL_INTERNO);
     const linkPublico = await obterLinkPublico(pastaFinal.id);
     console.log(`Pasta de entrega criada: ${linkPublico}`);
 
+    if (!linkPublico) {
+      throw new Error('Link público não gerado');
+    }
+
+    if (!recordId) {
+      throw new Error('ID do registro Tadabase não fornecido');
+    }
+
     // 3. Atualiza o Tadabase com o link
-    await atualizarTadabase(recordId, linkPublico);
+    await atualizarTadabase(String(recordId), linkPublico);
 
     // 4. Cria rascunho no Gmail
     const assunto = `FOTOS: ${nomeEmail} (${nomeCliente})`;
@@ -82,8 +90,8 @@ async function atualizarTadabase(recordId: string, link: string) {
   const response = await fetch(url, {
     method: 'PUT',
     headers: {
-      'X-Tadabase-App-id':     TADABASE_APP_ID,
-      'X-Tadabase-App-Key':    TADABASE_API_KEY,
+      'X-Tadabase-App-id': TADABASE_APP_ID,
+      'X-Tadabase-App-Key': TADABASE_API_KEY,
       'X-Tadabase-App-Secret': TADABASE_SECRET,
       'Content-Type': 'application/json',
     },
