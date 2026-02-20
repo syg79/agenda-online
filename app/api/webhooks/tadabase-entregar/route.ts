@@ -85,15 +85,16 @@ export async function POST(request: NextRequest) {
 }
 
 async function atualizarTadabase(recordId: string, link: string) {
-  const url = `${process.env.TADABASE_API_URL}/data-tables/${TADABASE_TABLE}/records/${recordId}`;
+  const url = `https://api.tadabase.io/api/v1/data-tables/${TADABASE_TABLE}/records/${recordId}`;
 
   const response = await fetch(url, {
     method: 'PUT',
     headers: {
-      'X-Tadabase-App-id': TADABASE_APP_ID,
-      'X-Tadabase-App-Key': TADABASE_API_KEY,
-      'X-Tadabase-App-Secret': TADABASE_SECRET,
+      'X-Tadabase-App-id': process.env.TADABASE_APP_ID!,
+      'X-Tadabase-App-Key': process.env.TADABASE_APP_KEY!,
+      'X-Tadabase-App-Secret': process.env.TADABASE_APP_SECRET!,
       'Content-Type': 'application/json',
+      'Accept': 'application/json',
     },
     body: JSON.stringify({ field_245: link }),
   });
