@@ -98,6 +98,7 @@ function BookingForm({ companyName }: BookingFormProps) {
   const [clientName, setClientName] = useState('');
   const [clientEmail, setClientEmail] = useState('');
   const [clientPhone, setClientPhone] = useState('');
+  const [brokerDetails, setBrokerDetails] = useState(''); // New State for field_177
 
   const [address, setAddress] = useState('');
   const [neighborhood, setNeighborhood] = useState('');
@@ -133,6 +134,7 @@ function BookingForm({ companyName }: BookingFormProps) {
             if (data.clientName) setClientName(data.clientName);
             if (data.clientEmail) setClientEmail(data.clientEmail);
             if (data.clientPhone) setClientPhone(data.clientPhone);
+            if (data.brokerDetails) setBrokerDetails(data.brokerDetails);
 
             if (data.address) {
               setAddress(data.address);
@@ -603,7 +605,9 @@ function BookingForm({ companyName }: BookingFormProps) {
         selectedTime,
         totalDuration: getTotalDuration(),
         totalPrice: getTotalPrice(),
+
         sourceProtocol: searchParams.get('protocol'), // Send original protocol if editing
+        brokerDetails: brokerDetails, // Pass broker details to API
       };
 
       const response = await fetch('/api/bookings', {

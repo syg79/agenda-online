@@ -44,6 +44,7 @@ export type Booking = {
         color: string;
     } | null;
     notes?: string;
+    brokerDetails?: string; // field_177 from Tadabase (Name + Phone)
 };
 
 export type DashboardData = {

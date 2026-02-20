@@ -81,3 +81,5 @@ next-env.d.ts
 *.pem
 *.log
 .cache/
+**/google/*.json
+_automacao - arquivmamento/

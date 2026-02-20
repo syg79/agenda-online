@@ -50,19 +50,21 @@ async function main() {
 
                 addressObj: item['field_94'] || {},
 
-                // Client Name: Use _val (contains name) instead of raw (contains ID)
-                clientName: getString(item['field_86_val']) || getString(item['field_86']),
+                // Client Name: Priority to Store/Connection (field_86_val), then Contact Name (field_177)
+                // User complaint: "sumiu o nome do cliente field_86" -> So field_86 is King.
+                clientName: getString(item['field_86_val']) || getString(item['field_86']) || getString(item['field_177']),
 
-                // Broker: Use _val
-                brokerDetails: getString(item['field_177_val']),
+                // Broker/Contact Details: field_177 (Raw text)
+                brokerDetails: getString(item['field_177']),
 
                 clientEmail: getString(item['field_375']),
-                clientPhone: getString(item['field_491']),
+                clientPhone: getString(item['field_491']), // Field 491 is often the broker/contact phone
                 status: getString(item['field_114']),
                 serviceType: item['field_110'] || [],
                 dateRequested: item['field_103'],
                 dateScheduled: item['field_106'],
                 timeScheduled: getString(item['field_406']),
+                obsScheduling: getString(item['field_276']), // NEW: Explicitly get field_276
 
                 // Address Mapping
                 // City in Tadabase Address field often holds the Neighborhood for local stats
@@ -93,11 +95,13 @@ async function main() {
                 latitude: fields.latitude ? parseFloat(fields.latitude) : null,
                 longitude: fields.longitude ? parseFloat(fields.longitude) : null,
                 status: 'PENDING',
-                notes: fields.brokerDetails ? String(fields.brokerDetails) : null,
-                services: Array.isArray(fields.serviceType) ? fields.serviceType.map(s => String(s)) : [],
+
+                notes: fields.obsScheduling ? String(fields.obsScheduling) : null, // Use real notes (field_276)
+                services: Array.isArray(fields.serviceType) ? fields.serviceType.map((s: any) => String(s)) : [],
                 date: fields.dateScheduled ? new Date(fields.dateScheduled) : new Date(),
                 time: fields.timeScheduled || '00:00',
-                duration: 60
+                duration: 60,
+                brokerDetails: fields.brokerDetails // Saved correctly to column
             };
 
 

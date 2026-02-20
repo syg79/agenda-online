@@ -304,22 +304,46 @@ export const tadabase = {
 
 
 
+        // Helper to extract value from Tadabase record (handles string, array, object, _val)
+        const getVal = (key: string) => {
+            if (!record) return null;
+            // 1. Try direct key
+            let val = record[key];
+
+            // 2. Try _val variant if direct is empty or object
+            if (record[`${key}_val`]) {
+                val = record[`${key}_val`];
+            } else if (Array.isArray(val) && val.length > 0 && val[0].val) {
+                // Connection field array [{id:..., val:...}]
+                val = val[0].val;
+            }
+
+            // 3. Convert to string
+            if (Array.isArray(val)) return val[0]; // Simple array
+            if (typeof val === 'object') return null; // Ignore raw objects if not handled
+            return val;
+        };
+
         const formatted: any = {
-            protocol: record[FIELDS.protocol],
-            clientName: record[FIELDS.contactName], // field_177
-            clientEmail: record[FIELDS.contactEmail], // field_375
-            clientPhone: record[FIELDS.contactPhone], // field_491
+            protocol: getVal(FIELDS.protocol),
+            clientName: getVal(FIELDS.contactName) || getVal(FIELDS.client) || 'Cliente Desconhecido',
+            // field_177 often needs _val if it's a connection/special field
+
+            clientEmail: getVal(FIELDS.contactEmail), // field_375
+            clientPhone: getVal(FIELDS.contactPhone), // field_491
+            brokerDetails: getVal(FIELDS.contactName), // field_177 (Explicitly mapped for ref)
+
             address: addressObj.address,
             neighborhood: addressObj.city, // Mapped from city -> neighborhood
             city: addressObj.state, // Mapped from state -> city
             zipCode: addressObj.zip,
-            complement: record[FIELDS.complement],
-            propertyType: reverseTypeMap(record[FIELDS.type]),
-            area: record[FIELDS.area],
+            complement: getVal(FIELDS.complement),
+            propertyType: reverseTypeMap(getVal(FIELDS.type)),
+            area: getVal(FIELDS.area),
             services: (record[FIELDS.serviceType] || []).map(reverseServiceMap),
-            date: record[FIELDS.date], // YYYY-MM-DD
-            time: record[FIELDS.time],
-            notes: record[FIELDS.obsScheduling]
+            date: getVal(FIELDS.date), // YYYY-MM-DD
+            time: getVal(FIELDS.time),
+            notes: getVal(FIELDS.obsScheduling)
         };
 
         // Post-process Services to detect "Drone Combo"

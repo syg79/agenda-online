@@ -124,6 +124,7 @@ export function DashboardSidebar({
 
                 {!isLoading && (() => {
                     const displayItems = (activeTab === 'scheduled' && listMode === 'total') ? futureItems : items;
+                    console.log(`[Sidebar] activeTab=${activeTab} items=${items.length} displayItems=${displayItems.length}`);
 
                     const filtered = displayItems.filter(order => {
                         if (!searchTerm) return true;

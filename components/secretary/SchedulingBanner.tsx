@@ -15,7 +15,9 @@ export function SchedulingBanner({ selectedOrder, onCancel, onScheduleManual }: 
                 <Clock className="w-5 h-5 text-orange-500 shrink-0" />
                 <div className="text-sm">
                     <span className="font-bold">Agendando: </span>
-                    Selecione um horário na grade para <span className="font-bold">{selectedOrder.clientName}</span>.
+                    Selecione um horário na grade para <span className="font-bold">{selectedOrder.clientName}</span>
+                    {selectedOrder.clientPhone && <span className="text-orange-600/80 text-xs ml-2">({selectedOrder.clientPhone})</span>}
+                    {selectedOrder.neighborhood && <span className="text-slate-500 text-xs ml-2"> - {selectedOrder.neighborhood}</span>}
                 </div>
             </div>
             <div className="flex items-center gap-2">

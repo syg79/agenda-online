@@ -53,7 +53,7 @@ async function main() {
         const { lat, lng } = getRandomCoordinates();
         const numServices = Math.floor(Math.random() * 3) + 1;
         const services = Array.from({ length: numServices }, () => getRandomItem(servicesList));
-        const uniqueServices = [...new Set(services)];
+        const uniqueServices = Array.from(new Set(services));
 
         const status = getRandomItem(statusOptions);
 

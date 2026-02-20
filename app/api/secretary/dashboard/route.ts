@@ -129,7 +129,7 @@ export async function GET(req: NextRequest) {
                     { date: 'asc' },
                     { time: 'asc' },
                 ],
-                take: 50,
+                take: 300,
                 select: {
                     id: true,
                     protocol: true,
@@ -142,9 +142,15 @@ export async function GET(req: NextRequest) {
                     services: true,
                     status: true,
                     latitude: true,
-                    longitude: true
+                    longitude: true,
+                    // Contact Info
+                    clientPhone: true,
+                    clientEmail: true,
+                    notes: true,
+                    brokerDetails: true, // field_177
                 }
             });
+            console.log(`[API] Found ${pending.length} pending bookings.`);
         }
 
         const stats = {
@@ -163,7 +169,7 @@ export async function GET(req: NextRequest) {
     } catch (error: any) {
         console.error('Error fetching dashboard data:', error);
         return NextResponse.json(
-            { error: 'Falha ao carregar dados do painel.' },
+            { error: 'Falha ao carregar dados do painel.', details: error.message, stack: error.stack },
             { status: 500 }
         );
     }

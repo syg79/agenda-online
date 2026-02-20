@@ -160,7 +160,7 @@ export default function DailyRouteMap({ schedule, pending = [], photographers, f
     const initialCenter: [number, number] = allCoords.length > 0 ? allCoords[0] : [-25.4296, -49.2719];
 
     return (
-        <div id="daily-route-map-container" className="w-full h-full relative group">
+        <div className="w-full h-full relative group">
             <MapContainer
                 key={`daily-route-map-${filterId}-${showPending ? 'p' : ''}`}
                 center={initialCenter}
@@ -379,8 +379,6 @@ export default function DailyRouteMap({ schedule, pending = [], photographers, f
                             );
                         }
                     });
-                })()}
-
                 })()}
 
                 <SetViewToFitMarkers

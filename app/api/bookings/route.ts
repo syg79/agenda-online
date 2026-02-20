@@ -23,7 +23,8 @@ export async function POST(request: Request) {
       selectedTime,
       totalDuration,
       totalPrice,
-      sourceProtocol // New optional field
+      sourceProtocol, // New optional field
+      brokerDetails // New field
     } = body;
 
     // 1. Validação básica
@@ -69,6 +70,7 @@ export async function POST(request: Request) {
             duration: totalDuration,
             status: 'CONFIRMED',
             price: totalPrice,
+            brokerDetails,
             // Protocol remains the same
           }
         });
@@ -103,7 +105,8 @@ export async function POST(request: Request) {
           duration: totalDuration,
           status: 'CONFIRMED',
           price: totalPrice,
-          paymentStatus: 'PENDING'
+          paymentStatus: 'PENDING',
+          brokerDetails
         }
       });
     }

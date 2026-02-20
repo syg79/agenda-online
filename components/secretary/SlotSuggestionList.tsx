@@ -20,11 +20,13 @@ interface SlotSuggestionListProps {
     photographerName?: string;
     date: string;
     time: string;
+    selectedOrderId?: string | null;
+    onConfirm: (orderId: string) => void;
     onSelectOrder: (orderId: string) => void;
     onClose: () => void;
 }
 
-export function SlotSuggestionList({ photographerId, photographerName, date, time, onSelectOrder, onClose }: SlotSuggestionListProps) {
+export function SlotSuggestionList({ photographerId, photographerName, date, time, onSelectOrder, onClose, selectedOrderId, onConfirm }: SlotSuggestionListProps) {
     const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -48,6 +50,16 @@ export function SlotSuggestionList({ photographerId, photographerName, date, tim
             fetchSuggestions();
         }
     }, [photographerId, date, time]);
+
+    const [sortBy, setSortBy] = useState<'relevance' | 'distance'>('relevance');
+
+    const sortedSuggestions = [...suggestions].sort((a, b) => {
+        if (sortBy === 'distance') {
+            return a.distanceKm - b.distanceKm;
+        }
+        // Relevance uses the sortScore from API (which considers insertion cost)
+        return (a as any).sortScore - (b as any).sortScore;
+    });
 
     return (
         <div className="bg-white border-l border-slate-200 w-96 shadow-2xl flex flex-col h-full animate-in slide-in-from-right duration-300 z-50 absolute right-0 top-0 bottom-0">
@@ -78,6 +90,25 @@ export function SlotSuggestionList({ photographerId, photographerName, date, tim
                 </button>
             </div>
 
+            {/* Sorting Toggle */}
+            <div className="px-5 py-2 bg-white border-b border-slate-100 flex items-center justify-between">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ordenar por:</span>
+                <div className="flex bg-slate-100 p-0.5 rounded-lg">
+                    <button
+                        onClick={() => setSortBy('relevance')}
+                        className={`text-[10px] font-bold px-2 py-1 rounded-md transition-all ${sortBy === 'relevance' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                    >
+                        Melhor Rota
+                    </button>
+                    <button
+                        onClick={() => setSortBy('distance')}
+                        className={`text-[10px] font-bold px-2 py-1 rounded-md transition-all ${sortBy === 'distance' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                    >
+                        Mais Próximo
+                    </button>
+                </div>
+            </div>
+
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50">
                 {loading ? (
@@ -92,46 +123,72 @@ export function SlotSuggestionList({ photographerId, photographerName, date, tim
                 ) : (
                     <>
                         <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">
-                            Saindo de: {suggestions[0]?.originLabel}
+                            Saindo de: {sortedSuggestions[0]?.originLabel}
                         </div>
-                        {suggestions.map((s) => (
-                            <div
-                                key={s.id}
-                                onClick={() => onSelectOrder(s.id)}
-                                className="bg-white border border-slate-200 p-3 rounded-xl hover:border-blue-500 hover:shadow-md cursor-pointer transition-all group relative overflow-hidden"
-                            >
-                                <div className="absolute top-0 right-0 p-2 bg-slate-50 rounded-bl-xl border-b border-l text-[10px] font-bold text-slate-500">
-                                    {s.distanceKm} km
-                                </div>
+                        {sortedSuggestions.map((s, index) => {
+                            const isSelected = selectedOrderId === s.id;
+                            const isBestRoute = sortBy === 'relevance' && index === 0;
 
-                                <div className="pr-12">
-                                    <h4 className="font-bold text-slate-800 text-sm truncate">{s.clientName}</h4>
-                                    <div className="text-[10px] text-slate-400 font-mono mt-0.5">#{s.protocol}</div>
-                                </div>
+                            return (
+                                <div
+                                    key={s.id}
+                                    onClick={() => {
+                                        if (isSelected) {
+                                            onConfirm(s.id);
+                                        } else {
+                                            onSelectOrder(s.id);
+                                        }
+                                    }}
+                                    className={`
+                                        border p-3 rounded-xl cursor-pointer transition-all group relative overflow-hidden
+                                        ${isSelected
+                                            ? 'bg-blue-50 border-blue-500 shadow-md ring-1 ring-blue-300'
+                                            : 'bg-white border-slate-200 hover:border-blue-300 hover:shadow-sm'
+                                        }
+                                        ${isBestRoute ? 'ring-2 ring-emerald-400 border-emerald-500 bg-emerald-50/30' : ''}
+                                    `}
+                                >
+                                    {isBestRoute && (
+                                        <div className="absolute top-0 left-0 bg-emerald-500 text-white text-[9px] font-bold px-2 py-0.5 rounded-br-lg z-10">
+                                            Recomendado
+                                        </div>
+                                    )}
+                                    <div className="absolute top-0 right-0 p-2 bg-slate-50 rounded-bl-xl border-b border-l text-[10px] font-bold text-slate-500">
+                                        {s.distanceKm} km
+                                    </div>
 
-                                <div className="mt-2 flex flex-wrap gap-1">
-                                    {s.services && s.services.map((svc, i) => (
-                                        <span key={i} className="text-[9px] px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded border border-slate-200">
-                                            {svc}
+                                    <div className="pr-12 pt-2">
+                                        <h4 className={`font-bold text-sm truncate ${isSelected ? 'text-blue-800' : 'text-slate-800'}`}>{s.clientName}</h4>
+                                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">#{s.protocol}</div>
+                                    </div>
+
+                                    <div className="mt-2 flex flex-wrap gap-1">
+                                        {s.services && s.services.map((svc, i) => (
+                                            <span key={i} className="text-[9px] px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded border border-slate-200">
+                                                {svc}
+                                            </span>
+                                        ))}
+                                    </div>
+
+                                    <div className="mt-2 flex items-start gap-2 text-xs text-slate-600">
+                                        <MapPin className="w-3.5 h-3.5 shrink-0 mt-0.5 text-blue-500" />
+                                        <span className="line-clamp-2 leading-relaxed">{s.address}</span>
+                                    </div>
+
+                                    <div className="mt-3 pt-3 border-t border-slate-100/50 flex justify-between items-center">
+                                        <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-1 rounded-md font-medium truncate max-w-[120px]">
+                                            {s.neighborhood}
                                         </span>
-                                    ))}
-                                </div>
 
-                                <div className="mt-2 flex items-start gap-2 text-xs text-slate-600">
-                                    <MapPin className="w-3.5 h-3.5 shrink-0 mt-0.5 text-blue-500" />
-                                    <span className="line-clamp-2 leading-relaxed">{s.address}</span>
+                                        {isSelected && (
+                                            <span className="text-xs font-bold text-blue-600 flex items-center gap-1 animate-in fade-in zoom-in duration-300">
+                                                Clique novamente para agendar <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
-
-                                <div className="mt-3 pt-3 border-t border-slate-100 flex justify-between items-center group-hover:border-blue-100 transition-colors">
-                                    <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-1 rounded-md font-medium truncate max-w-[120px]">
-                                        {s.neighborhood}
-                                    </span>
-                                    <span className="text-xs font-bold text-blue-600 group-hover:translate-x-1 transition-transform flex items-center gap-1">
-                                        Selecionar <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
-                                    </span>
-                                </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </>
                 )}
             </div>
