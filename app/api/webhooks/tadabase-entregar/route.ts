@@ -17,8 +17,8 @@ const PASTA_ENTREGA_RAIZ = '1aXGLidGiePZMTp2vkEHNKZCJFZM2-wBQ';
 const EMAIL_INTERNO = 'vitrinedoimovel@gmail.com';
 
 const TADABASE_APP_ID = process.env.TADABASE_APP_ID!;
-const TADABASE_API_KEY = process.env.TADABASE_API_KEY!;
-const TADABASE_SECRET = process.env.TADABASE_API_SECRET!;
+const TADABASE_API_KEY = process.env.TADABASE_APP_KEY!;
+const TADABASE_SECRET = process.env.TADABASE_APP_SECRET!;
 const TADABASE_TABLE = 'o6WQb5NnBZ';
 
 export async function POST(request: NextRequest) {
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
 }
 
 async function atualizarTadabase(recordId: string, link: string) {
-  const url = `https://api.tadabase.io/api/v1/data-pages/${TADABASE_APP_ID}/data-tables/${TADABASE_TABLE}/records/${recordId}`;
+  const url = `${process.env.TADABASE_API_URL}/data-pages/${TADABASE_APP_ID}/data-tables/${TADABASE_TABLE}/records/${recordId}`;
 
   const response = await fetch(url, {
     method: 'PUT',
