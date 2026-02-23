@@ -42,6 +42,8 @@ const DailyRouteMap = nextDynamic(() => import('@/components/secretary/DailyRout
 
 
 
+import MacroCalendarView from '@/components/secretary/MacroCalendarView';
+
 export default function SecretaryDashboard() {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -70,7 +72,7 @@ export default function SecretaryDashboard() {
 
     const [searchTerm, setSearchTerm] = useState('');
     const [activeTab, setActiveTab] = useState<'pending' | 'scheduled' | 'reserved' | 'waiting' | 'holding' | 'completed'>('pending');
-    const [viewMode, setViewMode] = useState<'timeline' | 'map'>('timeline');
+    const [viewMode, setViewMode] = useState<'timeline' | 'map' | 'global_map'>('timeline');
 
     // Modal State (Confirmation)
     const [confirmModal, setConfirmModal] = useState<{
@@ -435,11 +437,10 @@ export default function SecretaryDashboard() {
                             MAPA
                         </button>
                         <button
-                            onClick={() => alert('Visão de Calendário em desenvolvimento!')}
-                            className={`px-3 py-1 rounded-lg text-[9px] font-black tracking-widest transition-all text-slate-400 hover:text-slate-600`}
-                            title="Em breve"
+                            onClick={() => setViewMode('global_map')}
+                            className={`px-3 py-1 rounded-lg text-[9px] font-black tracking-widest transition-all gap-1 flex items-center ${viewMode === 'global_map' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm ring-1 ring-slate-100 dark:ring-slate-600' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
                         >
-                            CALENDÁRIO
+                            MACRO
                         </button>
                     </div>
 
@@ -500,20 +501,22 @@ export default function SecretaryDashboard() {
                 />
 
                 {/* CENTER: TIMELINE & CONTENT */}
-                <div className="flex-1 flex flex-col overflow-hidden bg-slate-50 relative">
+                <div className="flex-1 flex flex-col overflow-hidden bg-slate-50 dark:bg-slate-950 relative transition-colors">
 
                     {/* Timeline Container (Scrollable) */}
                     <div className="flex-1 overflow-auto p-6 pt-2 relative space-y-4">
 
                         {/* CALENDAR IN THE CENTER AREA */}
-                        <div className="flex justify-center shrink-0">
-                            <CalendarInline
-                                selectedDate={new Date(selectedDate + 'T00:00:00')}
-                                onDateSelect={handleCalendarSelect}
-                                minDate={new Date()} // Block past dates
-                                className="w-full max-w-sm shadow-md border-slate-100 bg-white"
-                            />
-                        </div>
+                        {viewMode !== 'global_map' && (
+                            <div className="flex justify-center shrink-0">
+                                <CalendarInline
+                                    selectedDate={new Date(selectedDate + 'T00:00:00')}
+                                    onDateSelect={handleCalendarSelect}
+                                    minDate={new Date()} // Block past dates
+                                    className="w-full max-w-sm shadow-md border-slate-100 bg-white dark:bg-slate-900 dark:border-slate-800 transition-colors"
+                                />
+                            </div>
+                        )}
 
                         {/* Manual Scheduling Hint */}
                         {selectedOrder && (
@@ -530,12 +533,12 @@ export default function SecretaryDashboard() {
                         )}
 
                         {viewMode === 'timeline' ? (
-                            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden w-full min-w-[800px]">
+                            <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden w-full min-w-[800px] transition-colors">
 
                                 {/* Combined Sticky Header: Date + Slots */}
-                                <div className="sticky top-0 z-30 bg-white shadow-sm">
+                                <div className="sticky top-0 z-30 bg-white dark:bg-slate-900 shadow-sm dark:shadow-slate-900/50">
                                     {/* Date Bar */}
-                                    <div className="flex items-center justify-between p-3 border-b border-slate-100 relative group">
+                                    <div className="flex items-center justify-between p-3 border-b border-slate-100 dark:border-slate-800 relative group">
                                         <button
                                             onClick={() => handleDateChange(-1)}
                                             className="p-1 px-2 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-blue-600 transition-all border border-transparent hover:border-slate-200"
@@ -544,7 +547,7 @@ export default function SecretaryDashboard() {
                                             <ChevronLeft className="w-5 h-5" />
                                         </button>
 
-                                        <span className="text-slate-900 font-extrabold text-[14px]">
+                                        <span className="text-slate-900 dark:text-slate-100 font-extrabold text-[14px]">
                                             {new Date(selectedDate + 'T00:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' }).replace(/ de /g, ' de ')}
                                         </span>
 
@@ -557,12 +560,12 @@ export default function SecretaryDashboard() {
                                     </div>
 
                                     {/* Grid Header (Times) */}
-                                    <div className="flex border-b border-slate-100 bg-white">
-                                        <div className="w-28 p-2 shrink-0 bg-slate-50 border-r border-slate-100 font-bold text-slate-500 text-[10px] uppercase tracking-wider flex items-center justify-center">
+                                    <div className="flex border-b border-slate-100 dark:border-slate-700/50 bg-white dark:bg-slate-800 transition-colors">
+                                        <div className="w-28 p-2 shrink-0 bg-slate-50 dark:bg-slate-900/80 border-r border-slate-100 dark:border-slate-700/50 font-bold text-slate-500 dark:text-slate-400 text-[10px] uppercase tracking-wider flex items-center justify-center">
                                             Fotógrafo
                                         </div>
                                         {timeSlots.map(hour => (
-                                            <div key={hour} className="flex-1 border-r border-slate-100 p-2 text-center text-xs font-bold text-slate-400 min-w-[48px]">
+                                            <div key={hour} className="flex-1 border-r border-slate-100 dark:border-slate-700/50 p-2 text-center text-xs font-bold text-slate-400 dark:text-slate-500 min-w-[48px]">
                                                 {hour}:00
                                             </div>
                                         ))}
@@ -582,10 +585,10 @@ export default function SecretaryDashboard() {
 
                                         return (
                                             <React.Fragment key={p.id}>
-                                                <div className={`flex border-b border-slate-100 h-20 relative group ${!isCompatible ? 'opacity-40 grayscale bg-slate-50' : ''}`}>
+                                                <div className={`flex border-b border-slate-100 dark:border-slate-800 h-20 relative group ${!isCompatible ? 'opacity-40 grayscale bg-slate-50 dark:bg-slate-800/50' : ''}`}>
                                                     {/* Photographer Info */}
                                                     <div
-                                                        className="w-28 p-1 shrink-0 border-r border-slate-100 bg-white flex flex-col justify-center items-center text-center cursor-pointer hover:bg-slate-50 transition-colors"
+                                                        className="w-28 p-1 shrink-0 border-r border-slate-100 dark:border-slate-800/50 bg-white dark:bg-slate-900 flex flex-col justify-center items-center text-center cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-colors"
                                                         onClick={() => setExpandedPhotographerId(isExpanded ? null : p.id)}
                                                     >
                                                         <div className="relative">
@@ -599,7 +602,7 @@ export default function SecretaryDashboard() {
                                                             )}
                                                         </div>
                                                         <div className="leading-tight">
-                                                            <div className="font-semibold text-[10px] text-slate-800 truncate max-w-[90px]">{p.name}</div>
+                                                            <div className="font-semibold text-[10px] text-slate-800 dark:text-slate-200 truncate max-w-[90px]">{p.name}</div>
                                                             <div className="text-[9px] text-slate-400 capitalize mt-0.5 leading-none">{p.neighborhoods ? 'Setor fixo' : 'Livre'}</div>
                                                         </div>
                                                     </div>
@@ -618,20 +621,19 @@ export default function SecretaryDashboard() {
                                                             <div
                                                                 key={hour}
                                                                 className={`
-                                                                    flex-1 border-r border-slate-50 relative transition-colors min-w-[48px] flex flex-row gap-0.5 p-0.5
-                                                                    ${isHoverable ? 'cursor-pointer hover:bg-orange-50 hover:ring-inset hover:ring-2 hover:ring-orange-200' : ''}
-                                                                    ${!isCompatible && selectedOrder ? 'cursor-not-allowed bg-slate-50/50' : 'bg-white'}
+                                                                    flex-1 border-r border-slate-50 dark:border-slate-800/50 relative transition-colors min-w-[48px] flex flex-row gap-0.5 p-0.5
+                                                                    ${isHoverable ? 'cursor-pointer hover:bg-orange-50 dark:hover:bg-slate-700/40 hover:ring-inset hover:ring-2 hover:ring-orange-200 dark:hover:ring-slate-600' : ''}
+                                                                    ${!isCompatible && selectedOrder ? 'cursor-not-allowed bg-slate-50/50 dark:bg-slate-800/30' : 'bg-white dark:bg-slate-900'}
                                                                 `}
                                                                 onClick={() => (isCompatible || !selectedOrder) && handleSlotClick(p.id, timeStr, p.name)}
                                                             >
                                                                 {items.map(item => (
                                                                     <div
                                                                         key={item.id}
-                                                                        className="flex-1 rounded p-1 text-[9px] border border-l-2 shadow-sm overflow-hidden z-10 leading-tight relative h-full min-w-[30px] cursor-pointer hover:brightness-95 transition-all"
+                                                                        className="flex-1 rounded p-1 text-[9px] border border-l-2 shadow-sm overflow-hidden z-10 leading-tight relative h-full min-w-[30px] cursor-pointer hover:brightness-95 transition-all text-slate-800 dark:text-slate-100"
                                                                         style={{
-                                                                            backgroundColor: `${pColor}10`,
+                                                                            backgroundColor: `${pColor}25`,
                                                                             borderColor: pColor,
-                                                                            color: '#334155'
                                                                         }}
                                                                         title={`${item.time} - ${item.clientName}`}
                                                                         onClick={(e) => {
@@ -656,10 +658,10 @@ export default function SecretaryDashboard() {
 
                                                                             {/* Bottom: Name + Services */}
                                                                             <div className="mt-0.5">
-                                                                                <div className="truncate text-[9px] font-bold text-slate-700 mb-0.5">{item.clientName}</div>
+                                                                                <div className="truncate text-[9px] font-bold text-slate-800 dark:text-slate-100 mb-0.5">{item.clientName}</div>
                                                                                 <div className="flex flex-wrap gap-0.5 overflow-hidden h-[14px]">
                                                                                     {item.services.slice(0, 2).map(s => (
-                                                                                        <span key={s} className="text-[7px] bg-white/50 px-1 rounded-sm border border-black/5 truncate max-w-[45px]">
+                                                                                        <span key={s} className="text-[7px] bg-white/60 dark:bg-black/40 text-slate-800 dark:text-slate-200 px-1 rounded-sm border border-black/5 dark:border-white/10 truncate max-w-[45px]">
                                                                                             {s}
                                                                                         </span>
                                                                                     ))}
@@ -675,8 +677,8 @@ export default function SecretaryDashboard() {
 
                                                 {/* Expanded Map (Accordion) */}
                                                 {isExpanded && (
-                                                    <div className="flex bg-white h-[350px] border-b border-slate-100 animate-in slide-in-from-top duration-300 overflow-hidden shrink-0">
-                                                        <div className="w-28 shrink-0 bg-slate-50 border-r border-slate-100 p-2 flex flex-col items-center justify-center gap-3">
+                                                    <div className="flex bg-white dark:bg-slate-900 h-[350px] border-b border-slate-100 dark:border-slate-800 animate-in slide-in-from-top duration-300 overflow-hidden shrink-0">
+                                                        <div className="w-28 shrink-0 bg-slate-50 dark:bg-slate-900/80 border-r border-slate-100 dark:border-slate-700/50 flex flex-col items-center justify-center p-2 relative group overflow-hidden pl-1">
                                                             <div className="flex flex-col items-center gap-1">
                                                                 <MapPin className="w-4 h-4 text-blue-500" />
                                                                 <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter text-center">Rota do Dia</span>
@@ -685,22 +687,22 @@ export default function SecretaryDashboard() {
                                                             <label className="flex items-center gap-2 cursor-pointer select-none">
                                                                 <input
                                                                     type="checkbox"
-                                                                    className="w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-0"
+                                                                    className="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-800 text-blue-600 focus:ring-0"
                                                                     checked={showPhotographerBase}
                                                                     onChange={(e) => setShowPhotographerBase(e.target.checked)}
                                                                 />
-                                                                <span className="text-[10px] uppercase font-bold text-slate-600">Casa do fotógrafo</span>
+                                                                <span className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300">Casa do fotógrafo</span>
                                                             </label>
 
                                                             {/* Show Pending Checkbox */}
                                                             <label className="flex items-center gap-2 cursor-pointer select-none">
                                                                 <input
                                                                     type="checkbox"
-                                                                    className="w-3.5 h-3.5 rounded border-slate-300 text-orange-600 focus:ring-0"
+                                                                    className="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-800 text-orange-600 focus:ring-0"
                                                                     checked={showPendingMap}
                                                                     onChange={(e) => setShowPendingMap(e.target.checked)}
                                                                 />
-                                                                <span className="text-[10px] uppercase font-bold text-slate-600">Mostrar Pendentes</span>
+                                                                <span className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300">Mostrar Pendentes</span>
                                                             </label>
                                                         </div>
                                                         <div className="flex-1 relative">
@@ -753,9 +755,17 @@ export default function SecretaryDashboard() {
                                                 {locationConflicts.map((c, i) => {
                                                     const firstItem = c.items[0];
                                                     return (
-                                                        <div key={i} className="text-[10px] text-orange-800 flex flex-col">
+                                                        <div key={i} className="text-[10px] text-orange-800 flex flex-col mb-1.5 pb-1 border-b border-orange-200/50 last:border-0 last:pb-0">
                                                             <span className="font-bold">{firstItem.address}</span>
-                                                            <span className="text-orange-600/80 italic">{firstItem.neighborhood}</span>
+                                                            <span className="text-orange-600/80 italic mb-1">{firstItem.neighborhood}</span>
+                                                            <div className="flex flex-col pl-2 border-l-2 border-orange-300/30 gap-0.5 mt-0.5">
+                                                                {c.items.map((item: any) => (
+                                                                    <div key={item.id} className="flex items-center justify-between text-[9px] text-orange-900 bg-orange-100/50 px-1 py-0.5 rounded">
+                                                                        <span className="font-semibold truncate max-w-[100px]">{item.photographerName || item.photographer?.name || 'Pendente'}</span>
+                                                                        <span className="shrink-0">{item.time || 'Sem h.'}</span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
                                                         </div>
                                                     );
                                                 })}
@@ -765,85 +775,112 @@ export default function SecretaryDashboard() {
                                 )}
 
                                 {/* Single-line Ultra-compact Filters */}
-                                <div className="flex flex-col gap-1.5 px-1">
-                                    <div className="flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
-                                        <button
-                                            onClick={() => setSelectedPhotographerMap('all')}
-                                            className={`px-3 py-1.5 rounded-full text-[10px] font-bold transition-all whitespace-nowrap shadow-sm border ${selectedPhotographerMap === 'all'
-                                                ? 'bg-blue-600 text-white border-blue-600'
-                                                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                                                }`}
-                                        >
-                                            Todos
-                                        </button>
+                                {viewMode === 'map' && (
+                                    <div className="flex flex-col gap-1.5 px-1">
+                                        <div className="flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
+                                            <button
+                                                onClick={() => setSelectedPhotographerMap('all')}
+                                                className={`px-3 py-1.5 rounded-full text-[10px] font-bold transition-all whitespace-nowrap shadow-sm border ${selectedPhotographerMap === 'all'
+                                                    ? 'bg-blue-600 text-white border-blue-600'
+                                                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-slate-700 dark:text-slate-200 dark:border-slate-600 dark:hover:bg-slate-600'
+                                                    }`}
+                                            >
+                                                Todos
+                                            </button>
 
-                                        <div className="w-px h-3 bg-slate-200 shrink-0 mx-1" />
+                                            <div className="w-px h-3 bg-slate-200 shrink-0 mx-1" />
 
-                                        {data?.photographers.map(p => {
-                                            const pColor = getMapColor(p.name, p.color);
-                                            const isSelected = selectedPhotographerMap === p.id;
-                                            return (
-                                                <button
-                                                    key={p.id}
-                                                    onClick={() => setSelectedPhotographerMap(p.id)}
-                                                    className={`px-2.5 py-1.5 rounded-full text-[10px] font-bold transition-all whitespace-nowrap shadow-sm border flex items-center gap-1.5 ${isSelected
-                                                        ? 'bg-white text-slate-800 border-2 shadow-md'
-                                                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                                                        }`}
-                                                    style={isSelected ? { borderColor: pColor } : {}}
-                                                >
-                                                    <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: pColor }}></div>
-                                                    {p.name}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
+                                            {data?.photographers.map(p => {
+                                                const pColor = getMapColor(p.name, p.color);
+                                                const isSelected = selectedPhotographerMap === p.id;
+                                                return (
+                                                    <button
+                                                        key={p.id}
+                                                        onClick={() => setSelectedPhotographerMap(p.id)}
+                                                        className={`px-2.5 py-1.5 rounded-full text-[10px] font-bold transition-all whitespace-nowrap shadow-sm border flex items-center gap-1.5 ${isSelected
+                                                            ? 'bg-white text-slate-800 border-2 shadow-md dark:bg-slate-800 dark:text-slate-100'
+                                                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-slate-800/50 dark:text-slate-300 dark:border-slate-700 dark:hover:bg-slate-700'
+                                                            }`}
+                                                        style={isSelected ? { borderColor: pColor } : {}}
+                                                    >
+                                                        <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: pColor }}></div>
+                                                        {p.name}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
 
-                                    {/* Ultra-compact Pending Toggle on its own line */}
-                                    <div className="flex justify-start px-1">
-                                        <div className="flex bg-white/90 backdrop-blur-sm p-2 rounded-xl shadow-lg border border-slate-200/50 items-center gap-4">
-                                            <div className="flex items-center gap-3">
-                                                <div className="text-[10px] font-black text-slate-400 tracking-widest mr-1">Filtros:</div>
-                                                <label className="flex items-center gap-2 cursor-pointer group">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={showPendingMap}
-                                                        onChange={(e) => setShowPendingMap(e.target.checked)}
-                                                        className="w-4 h-4 rounded border-slate-300 text-orange-500 focus:ring-orange-500 transition-all"
-                                                    />
-                                                    <span className="text-xs font-bold text-slate-600 group-hover:text-slate-900 transition-colors">Mostrar Pendentes</span>
-                                                </label>
+                                        {/* Ultra-compact Pending Toggle on its own line */}
+                                        <div className="flex justify-start px-1">
+                                            <div className="flex bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm p-2 rounded-xl shadow-lg border border-slate-200/50 dark:border-slate-700/50 items-center gap-4 transition-colors">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="text-[10px] font-black text-slate-400 dark:text-slate-500 tracking-widest mr-1">Filtros:</div>
+                                                    <label className="flex items-center gap-2 cursor-pointer group">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={showPendingMap}
+                                                            onChange={(e) => setShowPendingMap(e.target.checked)}
+                                                            className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-orange-500 focus:ring-orange-500 transition-all"
+                                                        />
+                                                        <span className="text-xs font-bold text-slate-600 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">Mostrar Pendentes</span>
+                                                    </label>
 
-                                                <label className="flex items-center gap-2 cursor-pointer group">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={showPhotographerBase}
-                                                        onChange={(e) => setShowPhotographerBase(e.target.checked)}
-                                                        className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 transition-all"
-                                                    />
-                                                    <span className="text-xs font-bold text-slate-600 group-hover:text-slate-900 transition-colors tracking-tight">Casa do fotógrafo</span>
-                                                </label>
+                                                    <label className="flex items-center gap-2 cursor-pointer group">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={showPhotographerBase}
+                                                            onChange={(e) => setShowPhotographerBase(e.target.checked)}
+                                                            className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-blue-500 focus:ring-blue-500 transition-all"
+                                                        />
+                                                        <span className="text-xs font-bold text-slate-600 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white transition-colors tracking-tight">Casa do fotógrafo</span>
+                                                    </label>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
-                                </div>
+                                )}
 
-                                <div key={`map-view-${selectedDate}-${selectedPhotographerMap}-${showPendingMap}-${data?.schedule?.length}`} className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden w-full h-[620px] relative">
-                                    {!isTimelineLoading && data ? (
-                                        <DailyRouteMap
-                                            schedule={data.schedule}
-                                            pending={data.pending}
-                                            photographers={data.photographers}
-                                            filterId={selectedPhotographerMap}
-                                            showPending={showPendingMap}
-                                            showPhotographerBase={showPhotographerBase}
-                                            onOrderClick={handleOrderClick}
-                                            selectedOrderId={selectedOrder?.id}
+                                {viewMode === 'map' && (
+                                    <div key={`map-view-${selectedDate}-${selectedPhotographerMap}-${showPendingMap}-${data?.schedule?.length}`} className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700/50 overflow-hidden w-full h-[620px] relative transition-colors">
+                                        {!isTimelineLoading && data ? (
+                                            <DailyRouteMap
+                                                schedule={data.schedule}
+                                                pending={data.pending}
+                                                photographers={data.photographers}
+                                                filterId={selectedPhotographerMap}
+                                                showPending={showPendingMap}
+                                                showPhotographerBase={showPhotographerBase}
+                                                onOrderClick={handleOrderClick}
+                                                onActionClick={(order) => {
+                                                    setSelectedOrder(order);
+                                                    setConfirmModal({
+                                                        isOpen: true,
+                                                        order: order,
+                                                        targetPhotographerId: '',
+                                                        targetTime: ''
+                                                    });
+                                                }}
+                                                selectedOrderId={selectedOrder?.id}
+                                                isGlobal={false}
+                                            />
+                                        ) : (
+                                            <div className="p-10 text-center text-slate-400 h-full flex items-center justify-center">Carregando Visão de Rotas...</div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {viewMode === 'global_map' && (
+                                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700/50 overflow-hidden w-full h-[620px] relative transition-colors">
+                                        <MacroCalendarView
+                                            currentDate={selectedDate}
+                                            onDateSelect={(dateStr) => {
+                                                setSelectedDate(dateStr);
+                                                setViewMode('timeline'); // Switch back to timeline after picking a date
+                                            }}
+                                            getMapColor={getMapColor}
                                         />
-                                    ) : (
-                                        <div className="p-10 text-center text-slate-400 h-full flex items-center justify-center">Carregando Visão de Rotas...</div>
-                                    )}
-                                </div>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
@@ -851,13 +888,13 @@ export default function SecretaryDashboard() {
 
                 {/* RIGHT SIDEBAR (Nested inside main content row for proper layout) */}
                 {selectedOrder && !selectedSlot && (
-                    <div className="w-80 bg-white border-l border-slate-200 shadow-xl overflow-y-auto z-40 animate-in slide-in-from-right duration-300 flex flex-col">
-                        <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 shrink-0">
-                            <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                    <div className="w-80 bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800/50 shadow-xl overflow-y-auto z-40 animate-in slide-in-from-right duration-300 flex flex-col transition-colors">
+                        <div className="p-4 border-b border-slate-100 dark:border-slate-800/50 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50 shrink-0 transition-colors">
+                            <h3 className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
                                 <AlertCircle className="w-4 h-4 text-blue-500" />
                                 Sugestões Inteligentes
                             </h3>
-                            <button onClick={() => setSelectedOrder(null)} className="p-1 hover:bg-slate-200 rounded-full transition"><XCircle className="w-4 h-4 text-slate-400" /></button>
+                            <button onClick={() => setSelectedOrder(null)} className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition"><XCircle className="w-4 h-4 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors" /></button>
                         </div>
                         <div className="flex-1 overflow-y-auto">
                             <SmartSuggestionList
@@ -883,7 +920,7 @@ export default function SecretaryDashboard() {
 
                 {/* SLOT SUGGESTION SIDEBAR (Situation 2) */}
                 {selectedSlot && (
-                    <div className="w-96 bg-white border-l border-slate-200 shadow-xl overflow-y-auto z-40 animate-in slide-in-from-right duration-300 flex flex-col relative">
+                    <div className="w-96 bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800/50 shadow-xl overflow-y-auto z-40 animate-in slide-in-from-right duration-300 flex flex-col relative transition-colors">
                         <SlotSuggestionList
                             photographerId={selectedSlot.photographerId}
                             photographerName={selectedSlot.photographerName}

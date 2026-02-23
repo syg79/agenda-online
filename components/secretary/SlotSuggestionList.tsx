@@ -34,7 +34,10 @@ export function SlotSuggestionList({ photographerId, photographerName, date, tim
         const fetchSuggestions = async () => {
             setLoading(true);
             try {
-                const res = await fetch(`/api/scheduling/suggestions-for-slot?photographerId=${photographerId}&date=${date}&time=${time}`);
+                const res = await fetch(`/api/scheduling/suggestions-for-slot?photographerId=${photographerId}&date=${date}&time=${time}&_t=${Date.now()}`, {
+                    cache: 'no-store',
+                    headers: { 'Cache-Control': 'no-cache' }
+                });
                 const data = await res.json();
                 if (data.suggestions) {
                     setSuggestions(data.suggestions);
@@ -62,9 +65,9 @@ export function SlotSuggestionList({ photographerId, photographerName, date, tim
     });
 
     return (
-        <div className="bg-white border-l border-slate-200 w-96 shadow-2xl flex flex-col h-full animate-in slide-in-from-right duration-300 z-50 absolute right-0 top-0 bottom-0">
+        <div className="bg-white dark:bg-slate-950 border-l border-slate-200 dark:border-slate-800/50 w-96 shadow-2xl flex flex-col h-full animate-in slide-in-from-right duration-300 z-50 absolute right-0 top-0 bottom-0 transition-colors">
             {/* Header */}
-            <div className="p-5 bg-slate-50 border-b flex justify-between items-start">
+            <div className="p-5 bg-slate-50 dark:bg-slate-900/80 border-b border-slate-100 dark:border-slate-800/50 flex justify-between items-start transition-colors">
                 <div>
                     <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
                         <Navigation className="w-5 h-5 text-blue-600" />
@@ -91,9 +94,9 @@ export function SlotSuggestionList({ photographerId, photographerName, date, tim
             </div>
 
             {/* Sorting Toggle */}
-            <div className="px-5 py-2 bg-white border-b border-slate-100 flex items-center justify-between">
+            <div className="px-5 py-2 bg-white dark:bg-slate-950 border-b border-slate-100 dark:border-slate-800/50 flex items-center justify-between transition-colors">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ordenar por:</span>
-                <div className="flex bg-slate-100 p-0.5 rounded-lg">
+                <div className="flex bg-slate-100 dark:bg-slate-800/50 p-0.5 rounded-lg">
                     <button
                         onClick={() => setSortBy('relevance')}
                         className={`text-[10px] font-bold px-2 py-1 rounded-md transition-all ${sortBy === 'relevance' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
@@ -110,7 +113,7 @@ export function SlotSuggestionList({ photographerId, photographerName, date, tim
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50">
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50 dark:bg-slate-950/50 transition-colors">
                 {loading ? (
                     <div className="flex flex-col items-center justify-center h-40 gap-3 text-slate-400">
                         <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
@@ -142,10 +145,10 @@ export function SlotSuggestionList({ photographerId, photographerName, date, tim
                                     className={`
                                         border p-3 rounded-xl cursor-pointer transition-all group relative overflow-hidden
                                         ${isSelected
-                                            ? 'bg-blue-50 border-blue-500 shadow-md ring-1 ring-blue-300'
-                                            : 'bg-white border-slate-200 hover:border-blue-300 hover:shadow-sm'
+                                            ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 shadow-md ring-1 ring-blue-300 dark:ring-blue-800/50'
+                                            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-500 hover:shadow-sm'
                                         }
-                                        ${isBestRoute ? 'ring-2 ring-emerald-400 border-emerald-500 bg-emerald-50/30' : ''}
+                                        ${isBestRoute ? 'ring-2 ring-emerald-400 border-emerald-500 bg-emerald-50/30 dark:bg-emerald-900/20' : ''}
                                     `}
                                 >
                                     {isBestRoute && (

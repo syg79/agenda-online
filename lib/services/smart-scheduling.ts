@@ -244,13 +244,15 @@ export async function findOrdersForSlot(
         const lastBeforeStart = timeToMinutes(lastBefore.time);
         const lastBeforeEnd = lastBeforeStart + (lastBefore.duration || 60);
 
+        // Removed hardcoded "assume base if > 3 hours". 
+        // We now always anchor to the previous booking of the day, regardless of the gap size,
+        // allowing the "ellipse" math to find the perfect midpoint even between distant shifts.
         prevItem = {
             lat: lastBefore.latitude,
             lng: lastBefore.longitude,
             label: `Saída de: ${lastBefore.clientName}`,
             endTimeMinutes: lastBeforeEnd
         };
-        // Update origin for simple distance display
         originLat = lastBefore.latitude;
         originLng = lastBefore.longitude;
         originLabel = prevItem.label;
@@ -259,13 +261,15 @@ export async function findOrdersForSlot(
             lat: photographer.baseLat,
             lng: photographer.baseLng,
             label: 'Saída da Base',
-            endTimeMinutes: 480 // Assume start of day 8:00
+            endTimeMinutes: targetMinutes - 60 // Assume leaving base recently
         };
     }
 
     if (firstAfter && firstAfter.latitude && firstAfter.longitude) {
         const firstAfterStart = timeToMinutes(firstAfter.time);
+        const targetEndMinutes = targetMinutes + 60; // Approx duration
 
+        // Removed explicit cut-off for > 3 hours. Always anchor to next booking.
         nextItem = {
             lat: firstAfter.latitude,
             lng: firstAfter.longitude,
@@ -299,42 +303,21 @@ export async function findOrdersForSlot(
             ? calculateDistance(p.latitude, p.longitude, nextItem.lat, nextItem.lng)
             : 0;
 
-        // --- Time Pressure Logic ---
-        // Default Weights
-        let weightPrev = 1;
-        let weightNext = 1;
-        let debugInfo = '';
+        // --- Time Pressure & Logic ---
+        // We use pure "Insertion Heuristic" -> how much detour cost is added?
+        // Cost = dist(Prev, P) + dist(P, Next). 
+        // We removed asymmetric time gap multipliers because they distort the geometry
+        // (creating a gravity well near the previous booking and ruining the perfect ellipse).
 
-        const targetDuration = p.duration || 60;
-        const targetEndMinutes = targetMinutes + targetDuration;
-
-        if (prevItem && prevItem.endTimeMinutes !== undefined) {
-            const gapPrev = targetMinutes - prevItem.endTimeMinutes;
-            // If tight gap (< 45 mins between jobs), increase weight
-            if (gapPrev < 45) weightPrev = 3.0;
-            // If huge gap (> 2 hours), decrease weight (driver has time to travel)
-            if (gapPrev > 120) weightPrev = 0.5;
-
-            debugInfo += `GapPrev: ${gapPrev}m (x${weightPrev}) `;
-        }
-
-        if (nextItem && nextItem.startTimeMinutes !== undefined) {
-            const gapNext = nextItem.startTimeMinutes - targetEndMinutes;
-            // If tight gap, CRITICAL to be close
-            if (gapNext < 45) weightNext = 3.0;
-            if (gapNext > 120) weightNext = 0.5;
-
-            debugInfo += `| GapNext: ${gapNext}m (x${weightNext}) `;
-        }
-
-        // Weighted Score (Lower is better)
-        // If we have both, we sum weighted distances.
         let sortScore = 0;
+        let debugInfo = 'Pure geom: ';
 
         if (prevItem && nextItem) {
-            sortScore = (distFromPrev * weightPrev) + (distToNext * weightNext);
+            // Both anchors exist: pure insertion cost (ellipse)
+            sortScore = distFromPrev + distToNext;
         } else {
-            sortScore = distFromPrev; // Default fall back
+            // Only one anchor
+            sortScore = distFromPrev;
         }
 
         return {
@@ -342,7 +325,7 @@ export async function findOrdersForSlot(
             distanceKm: parseFloat(distFromPrev.toFixed(1)),
             sortScore: sortScore,
             originLabel,
-            extraInfo: nextItem ? `(+${distToNext.toFixed(1)}km até próx.)` : '',
+            extraInfo: nextItem ? `(Entre ${originLabel.replace('Saída de: ', '')} e ${nextItem.label.replace('Indo para: ', '')})` : '',
             debugInfo // Optional: for debugging
         };
     }).filter(Boolean).sort((a: any, b: any) => a.sortScore - b.sortScore);

@@ -8,7 +8,45 @@ export async function GET(req: NextRequest) {
     try {
         const { searchParams } = new URL(req.url);
         const dateStr = searchParams.get('date');
-        const mode = searchParams.get('mode'); // 'day' or 'future'
+        const mode = searchParams.get('mode'); // 'day', 'future', or 'month'
+
+        if (mode === 'month') {
+            const yearStr = searchParams.get('year');
+            const monthStr = searchParams.get('month');
+
+            if (yearStr && monthStr) {
+                const year = parseInt(yearStr);
+                const month = parseInt(monthStr) - 1; // 0-indexed
+
+                const startOfMonth = new Date(year, month, 1);
+                const endOfMonth = new Date(year, month + 1, 0, 23, 59, 59, 999);
+
+                const schedule = await (prisma as any).booking.findMany({
+                    where: {
+                        status: { not: 'CANCELED' },
+                        date: {
+                            gte: startOfMonth,
+                            lte: endOfMonth
+                        }
+                    },
+                    include: {
+                        photographer: {
+                            select: { id: true, name: true, color: true }
+                        }
+                    },
+                    orderBy: { date: 'asc' }
+                });
+
+                const formattedSchedule = schedule.map((b: any) => ({
+                    ...b,
+                    date: b.date.toISOString().split('T')[0],
+                    time: b.time ? b.time.substring(0, 5) : '',
+                    photographerName: b.photographer?.name || 'Indefinido'
+                }));
+
+                return NextResponse.json({ schedule: formattedSchedule });
+            }
+        }
 
         if (mode === 'future') {
             // Fetch all confirmed bookings from today onwards

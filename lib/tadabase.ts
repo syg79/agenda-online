@@ -1,7 +1,7 @@
 import { Booking } from '@prisma/client';
 
 // Field Mappings from ApolarBot & User Feedback
-const FIELDS = {
+export const FIELDS = {
     protocol: 'field_139',     // Referência
     address: 'field_94',       // Endereço (Object)
     complement: 'field_136',   // Complemento
@@ -23,6 +23,9 @@ const FIELDS = {
     protocolNew: 'field_490', // Protocolo de Agendamento
     dateTimeFull: 'field_407', // Date/Time completo
     sessionTimeSort: 'field_183', // Horario da sessao (para ordenacao)
+    supabaseId: 'field_493', // Chave Única para evitar duplicidade (Supabase ID)
+    conferido: 'field_474',    // Conferido (Sim/Nao)
+    enviarVercel: 'field_494', // Testar Vercel (Sim/Nao)
 
     // Defaults from ApolarBot
     situation: 'field_219',    // Situação: "Pre-solicitacao (cliente)"
@@ -287,6 +290,54 @@ export const tadabase = {
         }
     },
 
+    async getVercelTestBookings() {
+        const { API_URL, APP_ID, APP_KEY, APP_SECRET, TABLE_ID } = getEnv();
+        if (!APP_ID || !APP_KEY || !APP_SECRET || !TABLE_ID) return [];
+
+        try {
+            const allItems = [];
+            let page = 1;
+            let hasMore = true;
+
+            while (hasMore) {
+                // Filter: "Enviar Vercel" is "Sim"
+                const url = `${API_URL}/data-tables/${TABLE_ID}/records?limit=100&page=${page}&filters[items][0][field_id]=${FIELDS.enviarVercel}&filters[items][0][operator]=is&filters[items][0][val]=Sim`;
+
+                console.log(`🔎 Polling Tadabase for 'Vercel = Sim' (Page ${page})...`);
+
+                const res = await fetch(url, {
+                    headers: {
+                        'X-Tadabase-App-id': APP_ID,
+                        'X-Tadabase-App-Key': APP_KEY,
+                        'X-Tadabase-App-Secret': APP_SECRET
+                    }
+                });
+
+                if (!res.ok) throw new Error(`API Error: ${res.status}`);
+
+                const data = await res.json();
+                const items = data.items || [];
+
+                allItems.push(...items);
+
+                if (data.has_more && data.current_page < data.total_pages) {
+                    page++;
+                } else {
+                    hasMore = false;
+                }
+
+                // Safety break
+                if (page > 10) hasMore = false;
+            }
+
+            return allItems;
+
+        } catch (error) {
+            console.error('Error pulling Vercel tests:', error);
+            return [];
+        }
+    },
+
     async getFormattedBooking(protocol: string) {
         const record = await this.findRecordByProtocol(protocol);
         if (!record) return null;
@@ -477,7 +528,7 @@ export const tadabase = {
             if (serviceNames.length === 0) serviceNames.push('Fotos');
 
             const payload: any = {
-                [FIELDS.protocol]: booking.protocol,
+                // Remove FIELDS.protocol to NOT overwrite the client Reference (field_139) used by the external system
                 [FIELDS.protocolNew]: booking.protocol,
                 [FIELDS.complement]: booking.complement,
                 [FIELDS.type]: TIPO_IMOVEL_MAP[booking.propertyType] || 'Ap',
@@ -502,16 +553,30 @@ export const tadabase = {
                 // Date & Time
                 [FIELDS.date]: booking.date ? new Date(booking.date).toISOString().split('T')[0] : undefined,
                 [FIELDS.requestDate]: new Date().toISOString().split('T')[0],
-                [FIELDS.date]: booking.date ? new Date(booking.date).toISOString().split('T')[0] : undefined,
-                [FIELDS.requestDate]: new Date().toISOString().split('T')[0],
                 [FIELDS.time]: booking.time,
                 [FIELDS.sessionTimeSort]: booking.time, // Same as time for sorting
                 [FIELDS.dateTimeFull]: booking.date && booking.time ? `${new Date(booking.date).toISOString().split('T')[0]} ${booking.time}` : undefined,
 
-                // Status Mapping (Prisma -> Tadabase)
-                // Status Mapping (Prisma -> Tadabase)
-                // User Request: "quando agendado tem que mudar para 'Agendado'"
-                [FIELDS.status]: 'Agendado',
+                // Sincronização da Chave Única (Supabase ID e Protocolo)
+                [FIELDS.supabaseId]: booking.id, // O ID real UUID no Supabase
+                [FIELDS.protocolNew]: booking.protocol, // O Protocolo gerado
+
+                // Dynamic Status Mapping (Supabase -> Tadabase)
+                [FIELDS.status]: (() => {
+                    const statusMap: Record<string, string> = {
+                        'PENDING': 'Pendente',
+                        'RESERVED': 'Reservado',
+                        'RESERVADO': 'Reservado', // Forca caso venha em PT
+                        'CONFIRMED': 'Agendado',
+                        'AGENDADO': 'Agendado',
+                        'REALIZADO': 'Realizado',
+                        'COMPLETED': 'Realizado',
+                        'WAITING': 'Aguardando Retorno',
+                        'CANCELED': 'Cancelado',
+                        'CANCELADO': 'Cancelado',
+                    };
+                    return statusMap[booking.status] || 'Pendente';
+                })(),
 
                 // Cobrança
                 [FIELDS.cobranca]: 'A faturar',
@@ -523,7 +588,8 @@ export const tadabase = {
                 [FIELDS.origin]: "Automatico",
                 [FIELDS.edited]: "Nao",
                 [FIELDS.printed]: "nao",
-                [FIELDS.publishAgenda]: "Privado"
+                [FIELDS.publishAgenda]: "Privado",
+                [FIELDS.conferido]: "Nao"
             };
 
             if (booking.clientName) {

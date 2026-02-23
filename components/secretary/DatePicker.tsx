@@ -59,14 +59,14 @@ export function CalendarInline({ selectedDate, onDateSelect, minDate, className 
     const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
     return (
-        <div className={`p-5 bg-white rounded-xl border border-slate-200 ${className}`}>
+        <div className={`p-5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 transition-colors ${className}`}>
             {/* Header */}
             <div className="flex items-center justify-between mb-6">
-                <button onClick={handlePrevMonth} className="p-1.5 hover:bg-slate-100 rounded-full transition"><ChevronLeft className="w-5 h-5 text-slate-600" /></button>
-                <span className="font-extrabold text-slate-800 text-base capitalize">
+                <button onClick={handlePrevMonth} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition"><ChevronLeft className="w-5 h-5 text-slate-600 dark:text-slate-400" /></button>
+                <span className="font-extrabold text-slate-800 dark:text-slate-200 text-base capitalize">
                     {monthNames[viewDate.getMonth()]} {viewDate.getFullYear()}
                 </span>
-                <button onClick={handleNextMonth} className="p-1.5 hover:bg-slate-100 rounded-full transition"><ChevronRight className="w-5 h-5 text-slate-600" /></button>
+                <button onClick={handleNextMonth} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition"><ChevronRight className="w-5 h-5 text-slate-600 dark:text-slate-400" /></button>
             </div>
 
             {/* Grid */}
@@ -93,10 +93,10 @@ export function CalendarInline({ selectedDate, onDateSelect, minDate, className 
                             disabled={isDisabled}
                             className={`
                                 h-8 w-8 rounded-full text-sm font-medium transition-all flex items-center justify-center
-                                ${isSelected ? 'bg-orange-600 text-white shadow-md' : ''}
-                                ${!isSelected && !isDisabled ? 'hover:bg-orange-50 text-slate-700 hover:text-orange-700' : ''}
-                                ${isToday && !isSelected ? 'text-orange-600 font-bold bg-orange-50' : ''}
-                                ${isDisabled ? 'text-slate-300 cursor-not-allowed decoration-slate-200 opacity-50' : ''}
+                                ${isSelected ? 'bg-orange-600 text-white shadow-md dark:shadow-orange-900/50' : ''}
+                                ${!isSelected && !isDisabled ? 'hover:bg-orange-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-orange-700 dark:hover:text-orange-400' : ''}
+                                ${isToday && !isSelected ? 'text-orange-600 dark:text-orange-400 font-bold bg-orange-50 dark:bg-slate-800/50' : ''}
+                                ${isDisabled ? 'text-slate-300 dark:text-slate-700 cursor-not-allowed decoration-slate-200 opacity-50' : ''}
                             `}
                         >
                             {day}
@@ -129,7 +129,7 @@ export function DatePicker({ selectedDate, onDateSelect, minDate }: DatePickerPr
                 onClick={() => setIsOpen(!isOpen)}
                 className={`
                     flex items-center gap-2 px-3 py-2 rounded-lg transition-all border
-                    ${isOpen ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-slate-100 border-transparent hover:bg-white hover:shadow-sm text-slate-700'}
+                    ${isOpen ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800/50 text-blue-700 dark:text-blue-400' : 'bg-slate-100 dark:bg-slate-900/50 border-transparent hover:bg-white dark:hover:bg-slate-800 hover:shadow-sm text-slate-700 dark:text-slate-300'}
                 `}
             >
                 <CalendarIcon className="w-4 h-4" />

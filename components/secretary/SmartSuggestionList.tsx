@@ -54,7 +54,7 @@ export function SmartSuggestionList({ targetLat, targetLng, currentDate, onSelec
     );
 
     return (
-        <div className="bg-white border-l border-slate-200 h-full flex flex-col w-72 shadow-xl overflow-hidden min-w-[288px]">
+        <div className="bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800/50 h-full flex flex-col w-72 shadow-xl overflow-hidden min-w-[288px] transition-colors">
             <div className="flex-1 overflow-y-auto p-3 space-y-3">
                 {opportunities.map((opp, idx) => {
                     const isPending = opp.photographer.id === 'PENDING';
@@ -64,22 +64,22 @@ export function SmartSuggestionList({ targetLat, targetLng, currentDate, onSelec
                             className={`
                                 border rounded-lg p-3 transition-all group relative
                                 ${isPending
-                                    ? 'bg-amber-50 border-amber-200 cursor-default'
-                                    : 'bg-white border-slate-200 hover:border-blue-400 hover:shadow-md cursor-pointer'
+                                    ? 'bg-amber-50 dark:bg-slate-800/80 border-amber-200 dark:border-amber-600/30 cursor-default shadow-sm'
+                                    : 'bg-white dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-md cursor-pointer'
                                 }
                             `}
                             onClick={() => !isPending && onSelectSuggestion(opp.photographer.id, opp.suggestedTime)}
                         >
                             {/* Header: Photographer & Distance */}
                             <div className="flex justify-between items-start mb-2">
-                                <span className={`font-semibold text-sm ${isPending ? 'text-amber-800' : 'text-slate-800'}`}>
+                                <span className={`font-semibold text-sm ${isPending ? 'text-amber-800 dark:text-amber-400' : 'text-slate-800 dark:text-slate-200'}`}>
                                     {opp.photographer.name}
                                 </span>
                                 <div className="flex flex-col items-end">
-                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${opp.distanceKm < 5 ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${opp.distanceKm < 5 ? 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400' : 'bg-yellow-100 dark:bg-amber-500/20 text-yellow-700 dark:text-amber-400'}`}>
                                         {opp.distanceKm} km
                                     </span>
-                                    {isPending && <span className="text-[9px] text-amber-600 font-bold uppercase mt-1">Pendente</span>}
+                                    {isPending && <span className="text-[9px] text-amber-600 dark:text-amber-500 font-bold uppercase mt-1">Pendente</span>}
                                 </div>
                             </div>
 
@@ -92,10 +92,10 @@ export function SmartSuggestionList({ targetLat, targetLng, currentDate, onSelec
                             {/* Recommendation */}
                             <div
                                 className={`
-                                    rounded border p-2 flex items-center justify-between transition-colors
+                                    rounded border p-2 flex items-center justify-between transition-colors mt-2
                                     ${isPending
-                                        ? 'bg-amber-100 border-amber-300 hover:bg-amber-200 cursor-pointer shadow-sm'
-                                        : 'bg-slate-50 border-slate-100 group-hover:bg-blue-50 group-hover:border-blue-200'
+                                        ? 'bg-amber-100 dark:bg-slate-900/60 border-amber-300 dark:border-amber-600/40 hover:bg-amber-200 dark:hover:bg-slate-700/80 cursor-pointer shadow-sm'
+                                        : 'bg-slate-50 dark:bg-slate-900/60 border-slate-100 dark:border-slate-700/50 group-hover:bg-blue-50 dark:group-hover:bg-blue-900/20 group-hover:border-blue-200 dark:group-hover:border-blue-800/50'
                                     }
                                 `}
                                 onClick={(e) => {
@@ -106,14 +106,14 @@ export function SmartSuggestionList({ targetLat, targetLng, currentDate, onSelec
                                 }}
                             >
                                 <div className="flex flex-col">
-                                    <span className="text-[10px] uppercase font-bold text-slate-400">
+                                    <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500">
                                         {isPending ? 'Ver este pedido' : 'Sugerido'}
                                     </span>
-                                    <span className={`font-bold flex items-center gap-1 ${isPending ? 'text-amber-700' : 'text-blue-600'}`}>
+                                    <span className={`font-bold flex items-center gap-1 ${isPending ? 'text-amber-700 dark:text-amber-400' : 'text-blue-600 dark:text-blue-400'}`}>
                                         {isPending ? (
                                             <>
                                                 <ArrowRight className="w-3 h-3" />
-                                                Próximo: {opp.suggestedTime}
+                                                {opp.suggestedTime === 'Juntar' ? 'Sugestão: Atender Junto' : `Próximo: ${opp.suggestedTime}`}
                                             </>
                                         ) : (
                                             <>

@@ -2,35 +2,40 @@
 
 import * as React from 'react';
 import { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline, Tooltip } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, useMap, Polyline, Tooltip } from 'react-leaflet';
 import * as L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Home, Camera, Clock, FileText } from 'lucide-react';
 import { renderToString } from 'react-dom/server';
 
-// Custom colored markers for different photographers
 const getMarkerIcon = (color: string, number: number | string, isBase: boolean = false, isSelected: boolean = false) => {
-    const size = isSelected ? (isBase ? 40 : 32) : (isBase ? 32 : 24);
-    const fontSize = isSelected ? (isBase ? '16px' : '14px') : (isBase ? '14px' : '12px');
+    const isPendingSelected = number === 'P' && isSelected;
+    const finalColor = isPendingSelected ? '#F97316' : (isBase ? 'white' : color); // Orange if selected pending
+    const textColor = isBase ? color : 'white';
+    const borderColor = isSelected ? '#1e293b' : (isBase ? color : 'white');
+
+    const size = isSelected ? (isBase ? 40 : 36) : (isBase ? 32 : 24);
+    const fontSize = isSelected ? (isBase ? '16px' : '16px') : (isBase ? '14px' : '12px');
     const borderSize = isSelected ? '3px' : '2px';
 
     const iconHtml = renderToString(
         <div style={{
-            backgroundColor: isBase ? 'white' : color,
+            backgroundColor: finalColor,
             width: `${size}px`,
             height: `${size}px`,
             borderRadius: '50%',
-            border: `${borderSize} solid ${isSelected ? '#1e293b' : (isBase ? color : 'white')}`, // Dark border for selected
+            border: `${borderSize} solid ${borderColor}`,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: isBase ? color : 'white',
+            color: textColor,
             fontWeight: 'bold',
             fontSize: fontSize,
-            boxShadow: isSelected ? '0 0 15px rgba(0,0,0,0.5)' : '0 2px 4px rgba(0,0,0,0.3)',
+            boxShadow: isSelected ? `0 0 0 4px ${finalColor}50, 0 4px 12px rgba(0,0,0,0.4)` : '0 2px 4px rgba(0,0,0,0.3)',
             position: 'relative',
             zIndex: isSelected ? 1000 : 1,
-            transform: isSelected ? 'scale(1.1)' : 'scale(1)'
+            transform: isSelected ? 'scale(1.1)' : 'scale(1)',
+            transition: 'all 0.2s ease-in-out'
         }}>
             {isBase ? <Home size={isSelected ? 20 : 16} /> : number}
             {!isBase && (
@@ -43,14 +48,14 @@ const getMarkerIcon = (color: string, number: number | string, isBase: boolean =
                     height: '0',
                     borderLeft: '4px solid transparent',
                     borderRight: '4px solid transparent',
-                    borderTop: `4px solid ${isSelected ? '#1e293b' : color}`
+                    borderTop: `4px solid ${borderColor}`
                 }} />
             )}
         </div>
     );
 
     return L.divIcon({
-        className: 'custom-div-icon',
+        className: `custom-div-icon ${isSelected ? 'animate-pulse-slow' : ''}`,
         html: iconHtml,
         iconSize: [size, size],
         iconAnchor: [size / 2, size / 2],
@@ -60,12 +65,12 @@ const getMarkerIcon = (color: string, number: number | string, isBase: boolean =
 function SetViewToFitMarkers({ markers, selectedId, allItems }: { markers: [number, number][], selectedId?: string | null, allItems: any[] }) {
     const map = useMap();
 
-    // Pan to selected item
+    // Pan to selected item without changing zoom
     useEffect(() => {
         if (selectedId) {
             const item = allItems.find(i => i.id === selectedId);
             if (item && item.latitude && item.longitude) {
-                map.flyTo([item.latitude, item.longitude], 15, { duration: 1.5 });
+                map.panTo([item.latitude, item.longitude], { animate: true, duration: 1 });
                 return;
             }
         }
@@ -88,12 +93,20 @@ interface DailyRouteMapProps {
     showPending?: boolean;
     showPhotographerBase?: boolean;
     onOrderClick: (order: any) => void;
+    onActionClick?: (order: any) => void; // Used for "Ver Detalhes" and "Agendar Agora"
     selectedOrderId?: string | null;
+    isGlobal?: boolean; // Hides polylines in MACRO view
 }
 
-export default function DailyRouteMap({ schedule, pending = [], photographers, filterId, showPending = false, showPhotographerBase = false, onOrderClick, selectedOrderId }: DailyRouteMapProps) {
+export default function DailyRouteMap({ schedule, pending = [], photographers, filterId, showPending = false, showPhotographerBase = false, onOrderClick, onActionClick, selectedOrderId, isGlobal = false }: DailyRouteMapProps) {
     const [isMounted, setIsMounted] = useState(false);
     const [isReady, setIsReady] = useState(false);
+
+    const selectedOrderData = React.useMemo(() => {
+        if (!selectedOrderId) return null;
+        const allItems = [...schedule, ...(pending || [])];
+        return allItems.find(i => i.id === selectedOrderId);
+    }, [selectedOrderId, schedule, pending]);
 
     useEffect(() => {
         setIsMounted(true);
@@ -103,6 +116,17 @@ export default function DailyRouteMap({ schedule, pending = [], photographers, f
             setIsReady(false);
         }
     }, []);
+
+    // Handle ESC key to close lightbox
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape' && selectedOrderData) {
+                onOrderClick(selectedOrderData);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [selectedOrderData, onOrderClick]);
 
     if (!isMounted || !isReady) return <div className="w-full h-full bg-slate-100 flex items-center justify-center text-slate-400 font-bold uppercase tracking-widest animate-pulse">Iniciando Leaflet...</div>;
 
@@ -185,20 +209,19 @@ export default function DailyRouteMap({ schedule, pending = [], photographers, f
                                 icon={getMarkerIcon(color, '0', true)}
                                 zIndexOffset={1000}
                             >
-                                <Popup>
+                                <Tooltip direction="top" offset={[0, -20]} opacity={0.9} className="custom-tooltip">
                                     <div className="p-1 text-center">
                                         <div className="font-bold text-sm">Base: {p.name}</div>
                                         <div className="text-[10px] text-slate-400">{p.baseAddress || 'Endereço não definido'}</div>
                                     </div>
-                                </Popup>
+                                </Tooltip>
                             </Marker>
                         </React.Fragment>
                     );
                 })}
 
                 {/* Draw Routes (Lines) */}
-                {/* Draw Routes (Lines) */}
-                {Object.entries(routesByPhotographer).map(([id, items]) => {
+                {!isGlobal && Object.entries(routesByPhotographer).map(([id, items]) => {
                     const p = photographers.find(ph => ph.id === id);
                     const color = p ? getPhotographerColor(p.name, p.color) : '#3b82f6';
 
@@ -270,53 +293,6 @@ export default function DailyRouteMap({ schedule, pending = [], photographers, f
                                             <div className="text-[9px] text-slate-500">{s.address}</div>
                                         </div>
                                     </Tooltip>
-                                    <Popup>
-                                        <div className="p-2 min-w-[180px]">
-                                            <div className="flex justify-between items-start mb-2 border-b border-slate-100 pb-1">
-                                                <div className="flex flex-col">
-                                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Protocolo</span>
-                                                    <span className="font-bold text-slate-700">#{s.protocol || s.id.substring(0, 4)}</span>
-                                                </div>
-                                                <div className="flex flex-col items-end">
-                                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Horário</span>
-                                                    <span className="font-bold text-blue-600 flex items-center gap-1">
-                                                        <Clock size={10} />
-                                                        {s.time}
-                                                    </span>
-                                                </div>
-                                            </div>
-
-                                            <div className="mb-2">
-                                                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Cliente</div>
-                                                <div className="font-bold text-slate-900 leading-tight">{s.clientName}</div>
-                                            </div>
-
-                                            <div className="mb-2">
-                                                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Localização</div>
-                                                <div className="text-xs text-slate-600 font-medium">{s.neighborhood}</div>
-                                                <div className="text-[10px] text-slate-500 italic leading-tight mt-0.5">{s.address}</div>
-                                            </div>
-
-                                            <div className="mb-3">
-                                                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Serviços</div>
-                                                <div className="flex flex-wrap gap-1">
-                                                    {s.services && s.services.map((svc: string) => (
-                                                        <span key={svc} className="text-[9px] px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded border border-slate-200">
-                                                            {svc}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            </div>
-
-                                            <button
-                                                onClick={() => onOrderClick(s)}
-                                                className="w-full mt-2 bg-blue-600 text-white text-[10px] font-bold py-2 rounded hover:bg-blue-700 transition-colors uppercase tracking-wider flex items-center justify-center gap-2"
-                                            >
-                                                <FileText size={12} />
-                                                Ver Detalhes / Editar
-                                            </button>
-                                        </div>
-                                    </Popup>
                                 </Marker>
                             );
                         } else {
@@ -331,50 +307,12 @@ export default function DailyRouteMap({ schedule, pending = [], photographers, f
                                         click: () => onOrderClick(s)
                                     }}
                                 >
-                                    <Popup>
-                                        <div className="p-2 min-w-[180px]">
-                                            <div className="flex justify-between items-start mb-2 border-b border-slate-100 pb-1">
-                                                <div className="flex flex-col">
-                                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Protocolo</span>
-                                                    <span className="font-bold text-slate-700">#{s.protocol || s.id.substring(0, 4)}</span>
-                                                </div>
-                                                <div className="flex flex-col items-end">
-                                                    <span className="text-[10px] font-black text-orange-400 uppercase tracking-widest">Status</span>
-                                                    <span className="font-bold text-orange-600 text-[10px]">PENDENTE</span>
-                                                </div>
-                                            </div>
-
-                                            <div className="mb-2">
-                                                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Cliente</div>
-                                                <div className="font-bold text-slate-900 leading-tight">{s.clientName}</div>
-                                            </div>
-
-                                            <div className="mb-2">
-                                                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Localização</div>
-                                                <div className="text-xs text-slate-600 font-medium">{s.neighborhood}</div>
-                                                <div className="text-[10px] text-slate-500 italic leading-tight mt-0.5">{s.address}</div>
-                                            </div>
-
-                                            <div className="mb-3">
-                                                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Serviços</div>
-                                                <div className="flex flex-wrap gap-1">
-                                                    {s.services && s.services.map((svc: string) => (
-                                                        <span key={svc} className="text-[9px] px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded border border-slate-200">
-                                                            {svc}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            </div>
-
-                                            <button
-                                                onClick={() => onOrderClick(s)}
-                                                className="w-full mt-2 bg-orange-600 text-white text-[10px] font-bold py-2 rounded hover:bg-orange-700 transition-colors uppercase tracking-wider flex items-center justify-center gap-2"
-                                            >
-                                                <Clock size={12} />
-                                                Agendar Agora
-                                            </button>
+                                    <Tooltip direction="top" offset={[0, -20]} opacity={0.9} className="custom-tooltip">
+                                        <div className="text-center">
+                                            <div className="font-bold text-[11px]">{s.clientName}</div>
+                                            <div className="text-[9px] text-slate-500">{s.address}</div>
                                         </div>
-                                    </Popup>
+                                    </Tooltip>
                                 </Marker>
                             );
                         }
@@ -387,6 +325,79 @@ export default function DailyRouteMap({ schedule, pending = [], photographers, f
                     allItems={[...validSchedules, ...validPending]}
                 />
             </MapContainer>
+
+            {/* Custom Compact Overlay Lightbox */}
+            {selectedOrderData && (
+                <div className="absolute top-4 right-4 w-64 bg-white/95 backdrop-blur-md rounded-xl shadow-2xl border border-slate-200/60 z-[9999] overflow-hidden animate-in slide-in-from-top-4 fade-in duration-200">
+                    <div className="p-3">
+                        <div className="flex justify-between items-start mb-2">
+                            <div className="flex flex-col">
+                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Referência</span>
+                                <span className="font-bold text-slate-800 text-xs">#{selectedOrderData.protocol || selectedOrderData.id.substring(0, 4)}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="flex flex-col items-end">
+                                    <span className={`text-[9px] font-black uppercase tracking-widest ${selectedOrderData.status === 'CONFIRMED' ? 'text-blue-400' : 'text-orange-400'}`}>Status</span>
+                                    <span className={`font-bold text-[9px] ${selectedOrderData.status === 'CONFIRMED' ? 'text-blue-600' : 'text-orange-600'}`}>
+                                        {selectedOrderData.status === 'CONFIRMED' ? 'AGENDADO' : 'PENDENTE'}
+                                    </span>
+                                </div>
+                                <button
+                                    onClick={() => onOrderClick(selectedOrderData)}
+                                    className="p-1 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors"
+                                    title="Fechar"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="mb-2 bg-slate-50 border border-slate-100 rounded-lg p-2">
+                            <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Cliente</div>
+                            <div className="font-bold text-slate-900 leading-tight text-xs block">{selectedOrderData.clientName}</div>
+                            {selectedOrderData.status === 'CONFIRMED' && (
+                                <div className="text-[10px] text-blue-600 font-bold mt-1 bg-blue-50 inline-block px-1.5 py-0.5 rounded">Horário: {selectedOrderData.time}</div>
+                            )}
+                        </div>
+
+                        <div className="mb-2">
+                            <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Localização</div>
+                            <div className="text-[11px] text-slate-700 font-bold leading-tight">{selectedOrderData.neighborhood}</div>
+                            <div className="text-[10px] text-slate-500 italic leading-tight mt-0.5 truncate">{selectedOrderData.address}</div>
+                        </div>
+
+                        <div className="mb-3">
+                            <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Serviços</div>
+                            <div className="flex flex-wrap gap-1">
+                                {selectedOrderData.services && selectedOrderData.services.map((svc: string) => (
+                                    <span key={svc} className="text-[9px] px-1.5 py-0.5 bg-slate-100 text-slate-600 font-medium rounded border border-slate-200">
+                                        {svc}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col gap-1.5">
+                            {selectedOrderData.status !== 'CONFIRMED' && (
+                                <button
+                                    onClick={() => onActionClick ? onActionClick(selectedOrderData) : onOrderClick(selectedOrderData)}
+                                    className="w-full bg-orange-600 text-white text-[10px] font-bold py-2 rounded-lg shadow-sm hover:bg-orange-700 hover:shadow transition-all uppercase tracking-wider flex items-center justify-center gap-1.5"
+                                >
+                                    <Clock size={12} />
+                                    Agendar Agora
+                                </button>
+                            )}
+                            <button
+                                onClick={() => onActionClick ? onActionClick(selectedOrderData) : onOrderClick(selectedOrderData)}
+                                className="w-full bg-slate-800 text-white text-[10px] font-bold py-2 rounded-lg shadow-sm hover:bg-slate-900 hover:shadow transition-all uppercase tracking-wider flex items-center justify-center gap-1.5"
+                            >
+                                <FileText size={12} />
+                                {selectedOrderData.status === 'CONFIRMED' ? 'Ver Detalhes / Editar' : 'Ver Detalhes do Pedido'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
