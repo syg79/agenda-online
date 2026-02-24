@@ -33,6 +33,7 @@ model Booking {
   longitude      Float?
   state          String        @default("PR")
   zipCode        String?
+  propertyType   String?       // field_102 from Tadabase (Ap, Casa, etc.)
   brokerDetails  String?       // field_177 from Tadabase (Name + Phone)
   photographer   Photographer? @relation(fields: [photographerId], references: [id])
 }

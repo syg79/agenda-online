@@ -9,7 +9,7 @@ Este plano descreve o roteiro arquitetural global para migração total do siste
 ### FASE 1: O Núcleo do Agendamento (MVP Agenda Online)
 **Objetivo:** Começar a usar a nova plataforma restrita exclusivamente à função de agendamento online inteligente.
 
-- [ ] **1.A. O Agendamento Novo:** Usamos o Supabase para a inteligência de calendário, horários, cálculo de distâncias (Nível 1) e alocação de fotógrafos.
+- [x] **1.A. O Agendamento Novo:** Usamos o Supabase para a inteligência de calendário, horários, cálculo de distâncias (Nível 1) e alocação de fotógrafos.
 - [ ] **1.B. Dependência do Tadabase:** O Tadabase continua sendo a Fonte da Verdade primária para toda a retaguarda.
 - [ ] **1.C. Sincronização Passiva:** A Agenda Online apenas atualiza o status de volta no Tadabase quando um agendamento é feito ou modificado.
 

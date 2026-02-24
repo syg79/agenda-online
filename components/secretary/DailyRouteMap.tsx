@@ -328,7 +328,17 @@ export default function DailyRouteMap({ schedule, pending = [], photographers, f
 
             {/* Custom Compact Overlay Lightbox */}
             {selectedOrderData && (
-                <div className="absolute top-4 right-4 w-64 bg-white/95 backdrop-blur-md rounded-xl shadow-2xl border border-slate-200/60 z-[9999] overflow-hidden animate-in slide-in-from-top-4 fade-in duration-200">
+                <div
+                    className="absolute top-4 right-4 w-64 bg-white/95 backdrop-blur-md rounded-xl shadow-2xl border border-slate-200/60 z-[9999] overflow-hidden animate-in slide-in-from-top-4 fade-in duration-200"
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onMouseUp={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
+                    onDoubleClick={(e) => e.stopPropagation()}
+                    onWheel={(e) => e.stopPropagation()}
+                    onTouchStart={(e) => e.stopPropagation()}
+                    onTouchEnd={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => e.stopPropagation()}
+                >
                     <div className="p-3">
                         <div className="flex justify-between items-start mb-2">
                             <div className="flex flex-col">
@@ -343,8 +353,15 @@ export default function DailyRouteMap({ schedule, pending = [], photographers, f
                                     </span>
                                 </div>
                                 <button
-                                    onClick={() => onOrderClick(selectedOrderData)}
-                                    className="p-1 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors"
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        if (e.nativeEvent) e.nativeEvent.stopImmediatePropagation();
+                                        onOrderClick(selectedOrderData);
+                                    }}
+                                    onPointerDown={(e) => e.stopPropagation()}
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                    className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
                                     title="Fechar"
                                 >
                                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
@@ -380,7 +397,15 @@ export default function DailyRouteMap({ schedule, pending = [], photographers, f
                         <div className="flex flex-col gap-1.5">
                             {selectedOrderData.status !== 'CONFIRMED' && (
                                 <button
-                                    onClick={() => onActionClick ? onActionClick(selectedOrderData) : onOrderClick(selectedOrderData)}
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        if (e.nativeEvent) e.nativeEvent.stopImmediatePropagation();
+                                        if (onActionClick) onActionClick(selectedOrderData);
+                                        else onOrderClick(selectedOrderData);
+                                    }}
+                                    onPointerDown={(e) => e.stopPropagation()}
+                                    onMouseDown={(e) => e.stopPropagation()}
                                     className="w-full bg-orange-600 text-white text-[10px] font-bold py-2 rounded-lg shadow-sm hover:bg-orange-700 hover:shadow transition-all uppercase tracking-wider flex items-center justify-center gap-1.5"
                                 >
                                     <Clock size={12} />
@@ -388,7 +413,15 @@ export default function DailyRouteMap({ schedule, pending = [], photographers, f
                                 </button>
                             )}
                             <button
-                                onClick={() => onActionClick ? onActionClick(selectedOrderData) : onOrderClick(selectedOrderData)}
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    if (e.nativeEvent) e.nativeEvent.stopImmediatePropagation();
+                                    if (onActionClick) onActionClick(selectedOrderData);
+                                    else onOrderClick(selectedOrderData);
+                                }}
+                                onPointerDown={(e) => e.stopPropagation()}
+                                onMouseDown={(e) => e.stopPropagation()}
                                 className="w-full bg-slate-800 text-white text-[10px] font-bold py-2 rounded-lg shadow-sm hover:bg-slate-900 hover:shadow transition-all uppercase tracking-wider flex items-center justify-center gap-1.5"
                             >
                                 <FileText size={12} />

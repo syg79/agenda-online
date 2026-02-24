@@ -5,7 +5,7 @@ import { tadabase } from '@/lib/tadabase';
 
 export async function POST(req: NextRequest) {
     try {
-        const { bookingId, photographerId, date, time, clientName, clientPhone, clientEmail, notes } = await req.json();
+        const { bookingId, photographerId, date, time, clientName, clientPhone, clientEmail, notes, services } = await req.json();
 
         if (!bookingId || !photographerId || !date || !time) {
             return NextResponse.json(
@@ -47,6 +47,7 @@ export async function POST(req: NextRequest) {
                 ...(clientPhone && { clientPhone }),
                 ...(clientEmail && { clientEmail }),
                 ...(notes && { notes }),
+                ...(services && { services }),
             },
             include: {
                 photographer: true,

@@ -17,7 +17,8 @@ import {
     Search,
     Info,
     FileText,
-    Briefcase
+    Briefcase,
+    RefreshCw
 } from 'lucide-react';
 import Link from 'next/link';
 import { SmartSuggestionList } from '@/components/secretary/SmartSuggestionList';
@@ -72,7 +73,7 @@ export default function SecretaryDashboard() {
 
     const [searchTerm, setSearchTerm] = useState('');
     const [activeTab, setActiveTab] = useState<'pending' | 'scheduled' | 'reserved' | 'waiting' | 'holding' | 'completed'>('pending');
-    const [viewMode, setViewMode] = useState<'timeline' | 'map' | 'global_map'>('timeline');
+    const [viewMode, setViewMode] = useState<'timeline' | 'map' | 'global_map' | 'list'>('timeline');
 
     // Modal State (Confirmation)
     const [confirmModal, setConfirmModal] = useState<{
@@ -111,6 +112,26 @@ export default function SecretaryDashboard() {
     const [expandedPhotographerId, setExpandedPhotographerId] = useState<string | null>(null);
     const [globalSearch, setGlobalSearch] = useState(false);
     const [showUncompleted, setShowUncompleted] = useState(false);
+    const [isSyncing, setIsSyncing] = useState(false);
+
+    const handleTadabaseSync = async () => {
+        setIsSyncing(true);
+        try {
+            const res = await fetch('/api/sync/tadabase-pull', { method: 'POST' });
+            const json = await res.json();
+            if (json.success) {
+                alert(`Sucesso! ${json.imported} novos, ${json.skipped} pulados.`);
+                fetchPendingData();
+                fetchDashboardData(selectedDate);
+            } else {
+                throw new Error(json.error || 'Erro desconhecido');
+            }
+        } catch (e: any) {
+            alert('Erro na sincronização: ' + e.message);
+        } finally {
+            setIsSyncing(false);
+        }
+    };
 
     // Helper for forced photographer colors (consistent with Map)
     const getMapColor = (name: string, currentColor: string | null) => {
@@ -383,37 +404,37 @@ export default function SecretaryDashboard() {
         <div className="flex h-screen bg-slate-100 overflow-hidden font-sans flex-col">
 
             {/* TOP HEADER */}
-            <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0 z-40 relative shadow-sm">
+            <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800/50 flex items-center justify-between px-6 shrink-0 z-40 relative shadow-sm transition-colors">
 
                 {/* LEFT: TABS */}
-                <div className="flex bg-slate-100 p-1 rounded-lg gap-1">
+                <div className="flex bg-slate-100 dark:bg-slate-800/50 p-1 rounded-lg gap-1 transition-colors">
                     <button
                         onClick={() => setActiveTab('pending')}
-                        className={`px-3 py-1.5 text-[11px] font-bold rounded-md transition-all ${activeTab === 'pending' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        className={`px-3 py-1.5 text-[11px] font-bold rounded-md transition-all ${activeTab === 'pending' ? 'bg-white dark:bg-slate-700 text-orange-600 dark:text-orange-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
                     >
                         Pendente ({tabCounts.pending})
                     </button>
                     <button
                         onClick={() => setActiveTab('scheduled')}
-                        className={`px-3 py-1.5 text-[11px] font-bold rounded-md transition-all ${activeTab === 'scheduled' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        className={`px-3 py-1.5 text-[11px] font-bold rounded-md transition-all ${activeTab === 'scheduled' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
                     >
                         Agendado ({tabCounts.scheduled})
                     </button>
                     <button
                         onClick={() => setActiveTab('holding')}
-                        className={`px-3 py-1.5 text-[11px] font-bold rounded-md transition-all ${activeTab === 'holding' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        className={`px-3 py-1.5 text-[11px] font-bold rounded-md transition-all ${activeTab === 'holding' ? 'bg-white dark:bg-slate-700 text-amber-600 dark:text-amber-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
                     >
                         Aguardando ({tabCounts.holding})
                     </button>
                     <button
                         onClick={() => setActiveTab('reserved')}
-                        className={`px-3 py-1.5 text-[11px] font-bold rounded-md transition-all ${activeTab === 'reserved' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        className={`px-3 py-1.5 text-[11px] font-bold rounded-md transition-all ${activeTab === 'reserved' ? 'bg-white dark:bg-slate-700 text-purple-600 dark:text-purple-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
                     >
                         Reservado ({tabCounts.reserved})
                     </button>
                     <button
                         onClick={() => setActiveTab('completed')}
-                        className={`px-3 py-1.5 text-[11px] font-bold rounded-md transition-all ${activeTab === 'completed' ? 'bg-white text-green-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        className={`px-3 py-1.5 text-[11px] font-bold rounded-md transition-all ${activeTab === 'completed' ? 'bg-white dark:bg-slate-700 text-green-600 dark:text-green-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
                     >
                         Realizado ({tabCounts.completed})
                     </button>
@@ -423,16 +444,16 @@ export default function SecretaryDashboard() {
                 <div className="flex items-center gap-6">
                     <ThemeToggle />
                     {/* VIEW TOGGLE */}
-                    <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/50">
+                    <div className="flex bg-slate-100 dark:bg-slate-800/50 p-1 rounded-xl border border-slate-200/50 dark:border-slate-700/50 transition-colors">
                         <button
                             onClick={() => setViewMode('timeline')}
-                            className={`px-3 py-1 rounded-lg text-[9px] font-black tracking-widest transition-all ${viewMode === 'timeline' ? 'bg-white text-blue-600 shadow-sm ring-1 ring-slate-100' : 'text-slate-500 hover:text-slate-700'}`}
+                            className={`px-3 py-1 rounded-lg text-[9px] font-black tracking-widest transition-all ${viewMode === 'timeline' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm ring-1 ring-slate-100 dark:ring-slate-600' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
                         >
                             TIMELINE
                         </button>
                         <button
                             onClick={() => setViewMode('map')}
-                            className={`px-3 py-1 rounded-lg text-[9px] font-black tracking-widest transition-all ${viewMode === 'map' ? 'bg-white text-blue-600 shadow-sm ring-1 ring-slate-100' : 'text-slate-500 hover:text-slate-700'}`}
+                            className={`px-3 py-1 rounded-lg text-[9px] font-black tracking-widest transition-all ${viewMode === 'map' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm ring-1 ring-slate-100 dark:ring-slate-600' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
                         >
                             MAPA
                         </button>
@@ -442,6 +463,12 @@ export default function SecretaryDashboard() {
                         >
                             MACRO
                         </button>
+                        <button
+                            onClick={() => setViewMode('list')}
+                            className={`px-3 py-1 rounded-lg text-[9px] font-black tracking-widest transition-all ${viewMode === 'list' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm ring-1 ring-slate-100 dark:ring-slate-600' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+                        >
+                            LISTA
+                        </button>
                     </div>
 
                     <div className="flex items-center gap-3">
@@ -449,6 +476,19 @@ export default function SecretaryDashboard() {
                             <div className="text-[12px] font-black text-blue-600">{(data?.schedule?.filter(s => s.status === 'CONFIRMED').length || 0)} agendamentos</div>
                             <div className="text-[10px] font-bold text-slate-400 tracking-tighter">Hoje</div>
                         </div>
+
+                        <button
+                            onClick={handleTadabaseSync}
+                            disabled={isSyncing}
+                            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-[10px] font-black transition shadow-md active:scale-95 tracking-widest ${isSyncing
+                                ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                                : 'bg-white text-orange-600 hover:bg-orange-50 border border-orange-200'
+                                }`}
+                        >
+                            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                            {isSyncing ? 'SYNCING...' : 'ATUALIZAR LISTA'}
+                        </button>
+
                         <Link href="/agendar" className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-[10px] font-black transition shadow-md flex items-center gap-1 active:scale-95 tracking-widest">
                             <FileText className="w-3.5 h-3.5" />
                             Novo pedido
@@ -582,10 +622,11 @@ export default function SecretaryDashboard() {
                                         const isCompatible = !selectedOrder || !orderNeedsVideo || photographerHasVideo;
                                         const isExpanded = expandedPhotographerId === p.id;
                                         const pColor = getMapColor(p.name, p.color);
+                                        const pSchedule = data?.schedule?.filter(s => s.photographerId === p.id).sort((a, b) => a.time.localeCompare(b.time)) || [];
 
                                         return (
                                             <React.Fragment key={p.id}>
-                                                <div className={`flex border-b border-slate-100 dark:border-slate-800 h-20 relative group ${!isCompatible ? 'opacity-40 grayscale bg-slate-50 dark:bg-slate-800/50' : ''}`}>
+                                                <div className={`flex border-b border-slate-100 dark:border-slate-800 h-[88px] relative group ${!isCompatible ? 'opacity-40 grayscale bg-slate-50 dark:bg-slate-800/50' : ''}`}>
                                                     {/* Photographer Info */}
                                                     <div
                                                         className="w-28 p-1 shrink-0 border-r border-slate-100 dark:border-slate-800/50 bg-white dark:bg-slate-900 flex flex-col justify-center items-center text-center cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-colors"
@@ -627,7 +668,7 @@ export default function SecretaryDashboard() {
                                                                 `}
                                                                 onClick={() => (isCompatible || !selectedOrder) && handleSlotClick(p.id, timeStr, p.name)}
                                                             >
-                                                                {items.map(item => (
+                                                                {items.map((item, idx) => (
                                                                     <div
                                                                         key={item.id}
                                                                         className="flex-1 rounded p-1 text-[9px] border border-l-2 shadow-sm overflow-hidden z-10 leading-tight relative h-full min-w-[30px] cursor-pointer hover:brightness-95 transition-all text-slate-800 dark:text-slate-100"
@@ -647,25 +688,31 @@ export default function SecretaryDashboard() {
                                                                         }}
                                                                     >
                                                                         <div className="flex flex-col h-full justify-between">
-                                                                            {/* Top: Neighborhood (Bold) */}
-                                                                            <div className="font-black truncate text-[10px] uppercase tracking-tight leading-none mb-0.5">{item.neighborhood}</div>
+                                                                            {/* Row 1: Neighborhood (Bold) */}
+                                                                            <div className="font-black truncate text-[10px] uppercase tracking-tight leading-none text-slate-900 dark:text-slate-100">{item.neighborhood}</div>
 
-                                                                            {/* Middle: Address + Ref */}
-                                                                            <div className="flex-1 min-h-0 flex flex-col justify-center">
-                                                                                <div className="truncate text-[9px] font-medium leading-tight opacity-90">{item.address}</div>
-                                                                                <div className="text-[8px] font-bold opacity-60">#{item.protocol || item.id.substring(0, 4)}</div>
+                                                                            {/* Row 2: Address */}
+                                                                            <div className="truncate text-[9px] font-medium leading-tight opacity-90 text-slate-700 dark:text-slate-300 mb-[1px]">{item.address}</div>
+
+                                                                            {/* Row 3: Services */}
+                                                                            <div className="flex flex-wrap gap-0.5 overflow-hidden items-center">
+                                                                                {item.services.slice(0, 2).map(s => (
+                                                                                    <span key={s} className="text-[7.5px] bg-white/60 dark:bg-black/40 text-slate-800 dark:text-slate-200 px-1 py-[1.5px] rounded-[2px] border border-black/5 dark:border-white/10 truncate max-w-[45px] font-medium leading-snug inline-flex items-center">
+                                                                                        {s}
+                                                                                    </span>
+                                                                                ))}
+                                                                                {item.services.length > 2 && <span className="text-[7.5px] text-slate-500">+{item.services.length - 2}</span>}
                                                                             </div>
 
-                                                                            {/* Bottom: Name + Services */}
-                                                                            <div className="mt-0.5">
-                                                                                <div className="truncate text-[9px] font-bold text-slate-800 dark:text-slate-100 mb-0.5">{item.clientName}</div>
-                                                                                <div className="flex flex-wrap gap-0.5 overflow-hidden h-[14px]">
-                                                                                    {item.services.slice(0, 2).map(s => (
-                                                                                        <span key={s} className="text-[7px] bg-white/60 dark:bg-black/40 text-slate-800 dark:text-slate-200 px-1 rounded-sm border border-black/5 dark:border-white/10 truncate max-w-[45px]">
-                                                                                            {s}
-                                                                                        </span>
-                                                                                    ))}
-                                                                                </div>
+                                                                            {/* Row 4: Reference */}
+                                                                            <div className="text-[9px] font-extrabold text-slate-800 dark:text-slate-300 text-right">
+                                                                                {item.protocol || item.id.substring(0, 4)}
+                                                                            </div>
+
+                                                                            {/* Row 5: Bottom Separator & Client Name */}
+                                                                            <div className="pt-1 border-t border-black/10 dark:border-white/10 flex justify-between items-center">
+                                                                                <div className="truncate text-[10px] font-bold text-slate-800 dark:text-slate-100 leading-tight tracking-tight">{item.clientName}</div>
+                                                                                <div className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 shrink-0">#{pSchedule.findIndex(s => s.id === item.id) + 1}</div>
                                                                             </div>
                                                                         </div>
                                                                     </div>
@@ -714,6 +761,14 @@ export default function SecretaryDashboard() {
                                                                 showPhotographerBase={showPhotographerBase}
                                                                 showPending={showPendingMap}
                                                                 onOrderClick={handleOrderClick}
+                                                                onActionClick={(order) => {
+                                                                    setConfirmModal({
+                                                                        isOpen: true,
+                                                                        order: order,
+                                                                        targetPhotographerId: p.id,
+                                                                        targetTime: ''
+                                                                    });
+                                                                }}
                                                                 selectedOrderId={selectedOrder?.id}
                                                             />
                                                         </div>
@@ -760,9 +815,9 @@ export default function SecretaryDashboard() {
                                                             <span className="text-orange-600/80 italic mb-1">{firstItem.neighborhood}</span>
                                                             <div className="flex flex-col pl-2 border-l-2 border-orange-300/30 gap-0.5 mt-0.5">
                                                                 {c.items.map((item: any) => (
-                                                                    <div key={item.id} className="flex items-center justify-between text-[9px] text-orange-900 bg-orange-100/50 px-1 py-0.5 rounded">
-                                                                        <span className="font-semibold truncate max-w-[100px]">{item.photographerName || item.photographer?.name || 'Pendente'}</span>
-                                                                        <span className="shrink-0">{item.time || 'Sem h.'}</span>
+                                                                    <div key={item.id} className="flex items-center justify-start gap-4 text-[9px] text-orange-900 bg-orange-100/50 px-1 py-0.5 rounded">
+                                                                        <span className="shrink-0 font-bold">{item.time || 'Sem h.'}</span>
+                                                                        <span className="font-semibold truncate max-w-[150px]">{item.photographerName || item.photographer?.name || 'Pendente'}</span>
                                                                     </div>
                                                                 ))}
                                                             </div>
@@ -878,7 +933,137 @@ export default function SecretaryDashboard() {
                                                 setViewMode('timeline'); // Switch back to timeline after picking a date
                                             }}
                                             getMapColor={getMapColor}
+                                            onOrderClick={(booking) => {
+                                                const d = new Date(booking.date);
+                                                const dateStr = d.toISOString().split('T')[0];
+                                                setSelectedDate(dateStr);
+                                                setViewMode('timeline');
+                                                setSelectedOrder(booking);
+                                            }}
                                         />
+                                    </div>
+                                )}
+
+                                {viewMode === 'list' && (
+                                    <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden h-full transition-colors w-full">
+                                        <div className="p-4 border-b border-slate-100 dark:border-slate-800/50 bg-slate-50/50 dark:bg-slate-900/50 flex items-center justify-between">
+                                            <h2 className="font-bold text-slate-800 dark:text-slate-200 text-sm">Visualização em Lista</h2>
+                                            <div className="text-xs text-slate-500 dark:text-slate-400">
+                                                Exibindo {data?.schedule?.length || 0} agendamentos e {data?.pending?.length || 0} pendentes
+                                            </div>
+                                        </div>
+                                        <div className="flex-1 overflow-auto">
+                                            <table className="w-full text-left border-collapse min-w-[800px]">
+                                                <thead className="bg-slate-50 dark:bg-slate-800/80 sticky top-0 z-10 shadow-sm">
+                                                    <tr>
+                                                        <th className="p-3 text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest border-b border-slate-200 dark:border-slate-700/50">Ref / Hora</th>
+                                                        <th className="p-3 text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest border-b border-slate-200 dark:border-slate-700/50">Cliente</th>
+                                                        <th className="p-3 text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest border-b border-slate-200 dark:border-slate-700/50">Endereço / Bairro</th>
+                                                        <th className="p-3 text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest border-b border-slate-200 dark:border-slate-700/50">Serviços</th>
+                                                        <th className="p-3 text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest border-b border-slate-200 dark:border-slate-700/50">Fotógrafo</th>
+                                                        <th className="p-3 text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest border-b border-slate-200 dark:border-slate-700/50 text-right">Ação</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                                    {/* Render Pending First */}
+                                                    {data?.pending?.map(item => (
+                                                        <tr key={item.id} className="hover:bg-orange-50/50 dark:hover:bg-slate-800/50 transition-colors group">
+                                                            <td className="p-3 align-top">
+                                                                <div className="flex flex-col gap-1">
+                                                                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200">#{item.protocol || item.id.substring(0, 4)}</span>
+                                                                    <span className="text-[10px] font-bold text-orange-600 bg-orange-100 dark:bg-orange-500/20 px-1.5 py-0.5 rounded w-fit uppercase">Pendente</span>
+                                                                </div>
+                                                            </td>
+                                                            <td className="p-3 align-top">
+                                                                <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">{item.clientName}</div>
+                                                                <div className="text-[10px] text-slate-500 dark:text-slate-400">Data: {new Date(item.date).toLocaleDateString('pt-BR')}</div>
+                                                            </td>
+                                                            <td className="p-3 align-top">
+                                                                <div className="text-xs font-bold text-slate-800 dark:text-slate-200">{item.neighborhood}</div>
+                                                                <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate max-w-[200px]">{item.address}</div>
+                                                            </td>
+                                                            <td className="p-3 align-top">
+                                                                <div className="flex flex-wrap gap-1">
+                                                                    {item.services.slice(0, 2).map(s => (
+                                                                        <span key={s} className="text-[9px] px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700/50 text-slate-600 dark:text-slate-300 font-medium">{s}</span>
+                                                                    ))}
+                                                                    {item.services.length > 2 && <span className="text-[9px] text-slate-400">+{item.services.length - 2}</span>}
+                                                                </div>
+                                                            </td>
+                                                            <td className="p-3 align-top text-xs text-slate-400 italic">Não Atribuído</td>
+                                                            <td className="p-3 align-top text-right">
+                                                                <button
+                                                                    onClick={() => setSelectedOrder(item)}
+                                                                    className="text-[10px] uppercase font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 dark:bg-blue-500/10 dark:text-blue-400 dark:hover:bg-blue-500/20 px-3 py-1.5 rounded-lg transition-colors"
+                                                                >
+                                                                    Ver Detalhes
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+
+                                                    {/* Render Scheduled */}
+                                                    {data?.schedule?.map(item => {
+                                                        const pColor = getMapColor(item.photographer?.name || '', null);
+                                                        return (
+                                                            <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                                                                <td className="p-3 align-top border-l-[3px]" style={{ borderLeftColor: pColor }}>
+                                                                    <div className="flex flex-col gap-1">
+                                                                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200">#{item.protocol || item.id.substring(0, 4)}</span>
+                                                                        <span className="text-[11px] font-black text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                                                                            <Clock className="w-3 h-3 text-blue-500" />
+                                                                            {item.time}
+                                                                        </span>
+                                                                    </div>
+                                                                </td>
+                                                                <td className="p-3 align-top">
+                                                                    <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">{item.clientName}</div>
+                                                                </td>
+                                                                <td className="p-3 align-top">
+                                                                    <div className="text-xs font-bold text-slate-800 dark:text-slate-200">{item.neighborhood}</div>
+                                                                    <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate max-w-[200px]">{item.address}</div>
+                                                                </td>
+                                                                <td className="p-3 align-top">
+                                                                    <div className="flex flex-wrap gap-1">
+                                                                        {item.services.slice(0, 2).map(s => (
+                                                                            <span key={s} className="text-[9px] px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700/50 text-slate-600 dark:text-slate-300 font-medium">{s}</span>
+                                                                        ))}
+                                                                        {item.services.length > 2 && <span className="text-[9px] text-slate-400">+{item.services.length - 2}</span>}
+                                                                    </div>
+                                                                </td>
+                                                                <td className="p-3 align-top">
+                                                                    <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700/50">
+                                                                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: pColor }}></div>
+                                                                        <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">{item.photographer?.name || 'Agendado'}</span>
+                                                                    </div>
+                                                                </td>
+                                                                <td className="p-3 align-top text-right">
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setSelectedOrder(item);
+                                                                            setConfirmModal({
+                                                                                isOpen: true,
+                                                                                order: item,
+                                                                                targetPhotographerId: item.photographerId || '',
+                                                                                targetTime: item.time || ''
+                                                                            });
+                                                                        }}
+                                                                        className="text-[10px] uppercase font-bold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 px-3 py-1.5 rounded-lg transition-colors inline-block"
+                                                                    >
+                                                                        Editar
+                                                                    </button>
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                    {(!data?.schedule || data.schedule.length === 0) && (!data?.pending || data.pending.length === 0) && (
+                                                        <tr>
+                                                            <td colSpan={6} className="p-10 text-center text-slate-400 text-sm">Nenhum dado encontrado para o dia selecionado.</td>
+                                                        </tr>
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
                                     </div>
                                 )}
                             </div>

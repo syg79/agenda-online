@@ -166,24 +166,28 @@ export function SchedulingModal({
                                     <Truck className="w-4 h-4" />
                                 </div>
                                 <div className="flex-1 flex flex-col gap-1 min-h-[48px] max-h-[80px] overflow-y-auto pr-1">
-                                    {['Foto', 'Vídeo', 'Drone', 'Tour 360', 'Planta Baixa'].map(serviceLabel => {
-                                        // Simple string mapping for UI toggling - REAL implementation should use IDs
-                                        // Since we don't have full state for services here, we are just mocking the display for now
-                                        // WAIT - The user requested "Serviços Editável". I should verify if I can edit `order.services`.
-                                        // `order` is a prop. I can't edit it directly. I need local state or `onServicesChange` prop.
-                                        // I will assume for this step I just display them. 
-                                        // But the user said "serviços nao esta editavel". 
-                                        // I need to add state for `selectedServices`.
-                                        return null;
-                                    })}
-                                    {/* Reverting to Read-Only + Disclaimer for now as fully editable services require complex state bubbling */}
-                                    <div className="flex flex-wrap gap-1">
-                                        {order?.services.map(s => (
-                                            <span key={s} className="text-[10px] font-bold bg-white text-slate-600 px-2 py-0.5 rounded border border-slate-200 shadow-sm">
-                                                {s}
-                                            </span>
-                                        ))}
-                                        <button className="text-[9px] text-blue-500 underline ml-1" onClick={() => alert('Edição de serviços será habilitada em breve')}>Alterar</button>
+                                    {/* Serviços (EDITÁVEL via Checkbox) */}
+                                    <div className="flex flex-wrap gap-1.5 mt-1 pb-2">
+                                        {Array.from(new Set(['Fotos', 'Vídeo', 'Drone', 'Tour 360', 'Planta Baixa', ...localServices])).map(serviceLabel => {
+                                            const isSelected = localServices.includes(serviceLabel);
+                                            return (
+                                                <label key={serviceLabel} className={`flex items-center gap-1.5 px-2 py-1 rounded border cursor-pointer transition-colors ${isSelected ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                                                    <input
+                                                        type="checkbox"
+                                                        className="w-3 h-3 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                                        checked={isSelected}
+                                                        onChange={(e) => {
+                                                            if (e.target.checked) {
+                                                                setLocalServices([...localServices, serviceLabel]);
+                                                            } else {
+                                                                setLocalServices(localServices.filter(s => s !== serviceLabel));
+                                                            }
+                                                        }}
+                                                    />
+                                                    <span className="text-[10px] font-bold">{serviceLabel}</span>
+                                                </label>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             </div>

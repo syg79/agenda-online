@@ -338,78 +338,74 @@ export const tadabase = {
         }
     },
 
-    async getFormattedBooking(protocol: string) {
-        const record = await this.findRecordByProtocol(protocol);
+    formatRecord(record: any) {
         if (!record) return null;
 
         // Helpers for reverse mapping
         const reverseServiceMap = (val: string) => Object.keys(SERVICE_MAP).find(key => SERVICE_MAP[key] === val) || val;
-        // Invert keys/values of TIPO_IMOVEL_MAP for lookup (value -> key)
         const reverseTypeMap = (val: string) => Object.keys(TIPO_IMOVEL_MAP).find(key => TIPO_IMOVEL_MAP[key] === val) || val;
 
-        // Address is stored as Object in Tadabase (field_94)
-        // Structure: { address: '...', city: '...', state: '...', zip: '...', country: '...' }
-        // BUT we mapped: city -> neighborhood, state -> city. 
-        // So when reading back: address.city is Neighborhood, address.state is City.
         const addressObj = record[FIELDS.address] || {};
 
-
-
-        // Helper to extract value from Tadabase record (handles string, array, object, _val)
         const getVal = (key: string) => {
             if (!record) return null;
-            // 1. Try direct key
             let val = record[key];
 
-            // 2. Try _val variant if direct is empty or object
+            // Aggressive extraction of strings from Tadabase objects
             if (record[`${key}_val`]) {
                 val = record[`${key}_val`];
-            } else if (Array.isArray(val) && val.length > 0 && val[0].val) {
-                // Connection field array [{id:..., val:...}]
-                val = val[0].val;
+            } else if (Array.isArray(val) && val.length > 0) {
+                if (typeof val[0] === 'object' && val[0] !== null && val[0].val) {
+                    val = val[0].val;
+                } else {
+                    val = val[0];
+                }
+            } else if (typeof val === 'object' && val !== null && val.val) {
+                val = val.val;
             }
 
-            // 3. Convert to string
-            if (Array.isArray(val)) return val[0]; // Simple array
-            if (typeof val === 'object') return null; // Ignore raw objects if not handled
+            if (typeof val === 'object' && val !== null) {
+                console.log(`[Tadabase] Field ${key} still an object after extraction:`, JSON.stringify(val));
+                return null;
+            }
+
             return val;
         };
 
         const formatted: any = {
             protocol: getVal(FIELDS.protocol),
             clientName: getVal(FIELDS.contactName) || getVal(FIELDS.client) || 'Cliente Desconhecido',
-            // field_177 often needs _val if it's a connection/special field
-
-            clientEmail: getVal(FIELDS.contactEmail), // field_375
-            clientPhone: getVal(FIELDS.contactPhone), // field_491
-            brokerDetails: getVal(FIELDS.contactName), // field_177 (Explicitly mapped for ref)
-
+            clientEmail: getVal(FIELDS.contactEmail),
+            clientPhone: getVal(FIELDS.contactPhone),
+            brokerDetails: getVal(FIELDS.contactName),
             address: addressObj.address,
-            neighborhood: addressObj.city, // Mapped from city -> neighborhood
-            city: addressObj.state, // Mapped from state -> city
+            neighborhood: addressObj.city,
+            city: addressObj.state,
             zipCode: addressObj.zip,
             complement: getVal(FIELDS.complement),
             propertyType: reverseTypeMap(getVal(FIELDS.type)),
             area: getVal(FIELDS.area),
             services: (record[FIELDS.serviceType] || []).map(reverseServiceMap),
-            date: getVal(FIELDS.date), // YYYY-MM-DD
+            date: getVal(FIELDS.date),
             time: getVal(FIELDS.time),
-            notes: getVal(FIELDS.obsScheduling)
+            notes: getVal(FIELDS.obsScheduling),
+            latitude: addressObj.lat ? parseFloat(addressObj.lat) : null,
+            longitude: addressObj.lng ? parseFloat(addressObj.lng) : null,
+            photographerName: getVal(FIELDS.photographer),
         };
 
-        // Post-process Services to detect "Drone Combo"
         const s = formatted.services;
         if (s.includes('drone_photo') && s.includes('drone_video')) {
-            // If both exist, replace them with 'drone_photo_video'
-            // But only if we want to show the combo box in UI.
-            // The UI has "Drone - Fotos + Vídeo".
-            // If I check that, I want it checked back.
-            // I'll filter out the individual ones and add the combo.
             formatted.services = s.filter((item: string) => item !== 'drone_photo' && item !== 'drone_video');
             formatted.services.push('drone_photo_video');
         }
 
         return formatted;
+    },
+
+    async getFormattedBooking(protocol: string) {
+        const record = await this.findRecordByProtocol(protocol);
+        return this.formatRecord(record);
     },
 
     async syncBooking(booking: any) {

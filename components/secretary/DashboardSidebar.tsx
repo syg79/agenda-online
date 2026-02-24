@@ -204,60 +204,73 @@ export function DashboardSidebar({
                                     }
                             `}
                             >
-                                {/* Status Badge (Absolute Top Right) */}
-                                <span className={`absolute top-3 right-3 text-[9px] font-bold px-2 py-0.5 rounded-full ${isConfirmed ? 'text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/40' :
-                                    isReserved ? 'text-purple-600 dark:text-purple-400 bg-purple-100 dark:bg-purple-900/40' :
-                                        isCompleted ? 'text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/40' :
-                                            'text-orange-600 dark:text-orange-400 bg-orange-100 dark:bg-orange-900/40'
-                                    }`}>
-                                    {order.status === 'PENDING' ? 'Pendente' : (order.status ? (order.status.charAt(0).toUpperCase() + order.status.slice(1).toLowerCase()) : (isActuallyPending ? 'Pendente' : 'Agendado'))}
-                                </span>
+                                {/* Linha 1: Ref & Status Badge */}
+                                <div className="flex justify-between items-center">
+                                    <span className="text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700">
+                                        #{order.protocol || order.id.substring(0, 6)}
+                                    </span>
+                                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${isConfirmed ? 'text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/40' :
+                                        isReserved ? 'text-purple-600 dark:text-purple-400 bg-purple-100 dark:bg-purple-900/40' :
+                                            isCompleted ? 'text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/40' :
+                                                'text-orange-600 dark:text-orange-400 bg-orange-100 dark:bg-orange-900/40'
+                                        }`}>
+                                        {order.status === 'PENDING' ? 'Pendente' : (order.status ? (order.status.charAt(0).toUpperCase() + order.status.slice(1).toLowerCase()) : (isActuallyPending ? 'Pendente' : 'Agendado'))}
+                                    </span>
+                                </div>
 
-                                {/* Header: Ref & Client */}
-                                <div className="flex justify-between items-start pr-16 text-left">
-                                    <div className="flex flex-col gap-1 w-full">
-                                        <span className="w-fit text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700">
-                                            #{order.protocol || order.id.substring(0, 6)}
-                                        </span>
-                                        <h3 className={`font-bold text-sm truncate w-full ${isSelected ? 'text-orange-900 dark:text-orange-500' : 'text-slate-800 dark:text-slate-200'}`}>
-                                            {order.clientName}
-                                        </h3>
+                                {/* Linha 2: BAIRRO (e Cidade se não for Curitiba) */}
+                                <div className="mt-1">
+                                    <h3 className={`font-black text-xs uppercase tracking-tight ${isSelected ? 'text-orange-900 dark:text-orange-400' : 'text-slate-900 dark:text-white'}`}>
+                                        {order.neighborhood}
+                                        {order.city && order.city.toLowerCase() !== 'curitiba' && (
+                                            <span className="ml-1 text-[10px] opacity-60 font-medium">({order.city})</span>
+                                        )}
+                                    </h3>
+                                </div>
+
+                                {/* Linha 3: Endereço completo */}
+                                <div className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight flex items-start gap-1">
+                                    <MapPin className="w-2.5 h-2.5 mt-0.5 shrink-0" />
+                                    <span className="truncate">{order.address}</span>
+                                </div>
+
+                                {/* Linha 4: Tipo de Imóvel */}
+                                {order.propertyType && (
+                                    <div className="text-[10px] font-bold text-slate-600 dark:text-slate-300 bg-slate-100/50 dark:bg-slate-800/50 px-1.5 py-0.5 rounded w-fit">
+                                        {order.propertyType}
                                     </div>
+                                )}
+
+                                {/* Linha 5: Nome do Cliente */}
+                                <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+                                    <span className="truncate">{order.clientName}</span>
                                 </div>
 
-                                {/* Address Line 1: Neighborhood */}
-                                <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 mt-1">
-                                    <MapPin className="w-3 h-3 text-slate-400 dark:text-slate-500" />
-                                    <span className="truncate">{order.neighborhood}</span>
+                                {/* Linha 6: Tags de Serviços */}
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                    {order.services.slice(0, 5).map(s => (
+                                        <span key={s} className="text-[8px] font-bold text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-100 dark:border-slate-800">
+                                            {s}
+                                        </span>
+                                    ))}
+                                    {order.services.length > 5 && (
+                                        <span className="text-[8px] text-slate-400">+{order.services.length - 5}</span>
+                                    )}
                                 </div>
 
-                                {/* Address Line 2: Street + Complement */}
-                                <div className="pl-4 text-[11px] text-slate-500 dark:text-slate-400 truncate leading-tight">
-                                    {order.address}
-                                </div>
-
-                                {/* Footer: Photographer & Time if scheduled */}
+                                {/* Agendamento Info (if scheduled) */}
                                 {order.photographer && (
-                                    <div className="flex items-center gap-2 mt-2 px-1 py-0.5 bg-slate-50 dark:bg-slate-800/50 rounded border border-slate-100 dark:border-slate-700/50 border-dashed">
+                                    <div className="flex items-center gap-2 mt-2 px-1 py-1 bg-blue-50/50 dark:bg-blue-900/20 rounded border border-blue-100/50 dark:border-blue-800/50 border-dashed">
                                         <div className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white shadow-sm" style={{ backgroundColor: getMapColor(order.photographer.name, order.photographer.color || '#3B82F6') }}>
                                             {getInitials(order.photographer.name)}
                                         </div>
-                                        <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300">{order.photographer.name}</span>
-                                        <span className="text-[10px] text-slate-400 dark:text-slate-500 ml-auto flex items-center gap-0.5">
+                                        <span className="text-[10px] font-bold text-blue-700 dark:text-blue-400">{order.photographer.name}</span>
+                                        <span className="text-[10px] text-blue-500 dark:text-blue-500 ml-auto flex items-center gap-0.5">
                                             <Clock className="w-2.5 h-2.5" />
                                             {order.time}
                                         </span>
                                     </div>
                                 )}
-
-                                {/* Footer: Services */}
-                                <div className="flex flex-wrap gap-1 mt-2">
-                                    {order.services.slice(0, 4).map(s => (
-                                        <span key={s} className="text-[9px] font-medium text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">
-                                            {s}
-                                        </span>
-                                    ))}
-                                </div>
                             </div>
                         );
                     });
