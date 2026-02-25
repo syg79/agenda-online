@@ -135,3 +135,38 @@ model CepLocation {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
+
+model SyncLog {
+  id        String   @id @default(uuid())
+  source    String   // "tadabase-pull", "apolarbot", "formulario"
+  status    String   // "success", "error"
+  imported  Int      @default(0)
+  errors    Int      @default(0)
+  details   Json?
+  createdAt DateTime @default(now())
+}
+
+model Property {
+  id            String   @id @default(uuid())
+  ref           String   @unique
+  address       String?
+  neighborhood  String?
+  city          String?
+  state         String?
+  zipCode       String?
+  propertyType  String?
+  area          Float?
+  bedrooms      Int?
+  parkingSpaces Int?
+  brokerName    String?
+  storeName     String?
+  price         Decimal? @db.Decimal(12, 2)
+  latitude      Float?
+  longitude     Float?
+  building      String?
+  description   String?
+  situation     String?
+  rawData       Json?
+  scrapedAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}

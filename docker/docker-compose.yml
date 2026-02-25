@@ -1,0 +1,16 @@
+services:
+  browserless:
+    image: browserless/chrome:latest
+    container_name: browserless
+    restart: unless-stopped
+    ports:
+      - "3033:3000"
+    environment:
+      - TOKEN=${BROWSERLESS_TOKEN:-vitrine2026}
+      - MAX_CONCURRENT_SESSIONS=2
+      - TIMEOUT=120000
+      - HEALTH=true
+    deploy:
+      resources:
+        limits:
+          memory: 2g
