@@ -93,7 +93,13 @@ export interface PropertyData {
     building: string | null;
     description: string | null;
     situation: string | null;
+    listingDate: string | null;
+    expiryDate: string | null;
+    popupPrice: string | null;
+    internalNotes: string | null;
 }
+
+export type ProgressCallback = (step: string, percent: number) => void;
 
 // Check if ApolarNet is in maintenance (02:00-06:00 BRT)
 export function isMaintenanceWindow(): boolean {
@@ -227,7 +233,8 @@ function parseIntSafe(raw: string): number | null {
 }
 
 // Main scraping function - port of Python's processar_referencia()
-export async function scrapeProperty(ref: string): Promise<PropertyData> {
+export async function scrapeProperty(ref: string, onProgress?: ProgressCallback): Promise<PropertyData> {
+    const progress = onProgress || (() => { });
     const browserlessUrl = process.env.BROWSERLESS_URL;
     if (!browserlessUrl) throw new Error('BROWSERLESS_URL not configured');
 
@@ -241,10 +248,13 @@ export async function scrapeProperty(ref: string): Promise<PropertyData> {
     try {
         // Connect to remote Browserless instance
         browser = await chromium.connectOverCDP(browserlessUrl);
-        const context = await browser.newContext();
+        const context = await browser.newContext({
+            viewport: { width: 1280, height: 720 }
+        });
         const page = await context.newPage();
 
         // 1. Login to ApolarNet (mirrors Python L302-312)
+        progress('Conectando ao ApolarNet...', 10);
         console.log('[Scraper] Logging into apolar.net...');
         await page.goto('https://apolar.net', { waitUntil: 'networkidle', timeout: 30000 });
         await page.waitForSelector('#Login', { timeout: 10000 });
@@ -252,17 +262,25 @@ export async function scrapeProperty(ref: string): Promise<PropertyData> {
         await page.fill('#Senha', apolarPass);
         await page.click('button[type="submit"]');
         await page.waitForLoadState('networkidle');
+        progress('Login realizado com sucesso', 20);
         console.log('[Scraper] Login successful');
 
         // 2. Navigate to ERP > Análise Carteira (mirrors Python L320-327)
+        progress('Navegando para Análise Carteira...', 30);
         console.log('[Scraper] Navigating to Análise Carteira...');
-        await page.locator('a.sidebar-itens:has-text("ERP")').click();
-        await page.waitForTimeout(1000);
-        await page.locator('a.sidebar-itens[href="/AnaliseCarteira/"]').click();
+        try {
+            await page.locator('a.sidebar-itens:has-text("ERP")').click({ force: true, timeout: 5000 });
+            await page.waitForTimeout(1500);
+            await page.locator('a.sidebar-itens[href="/AnaliseCarteira/"]').click({ force: true, timeout: 5000 });
+        } catch {
+            console.log('[Scraper] Sidebar click failed, using direct navigation...');
+            await page.goto('https://apolar.net/AnaliseCarteira/', { waitUntil: 'networkidle', timeout: 30000 });
+        }
         await page.waitForLoadState('networkidle');
         await page.waitForTimeout(1000);
 
         // 3. Search by REF (mirrors Python L330-333)
+        progress(`Buscando referência ${ref}...`, 40);
         console.log(`[Scraper] Searching REF: ${ref}...`);
         await page.fill('input#txtReferencia', ref);
         await page.waitForTimeout(500);
@@ -290,15 +308,20 @@ export async function scrapeProperty(ref: string): Promise<PropertyData> {
         const rawPrice = (await row.locator('td').nth(8).innerText()).trim();
         const rawSituation = (await row.locator('td').nth(9).innerText()).trim();
 
+        progress('Dados principais extraídos', 50);
         console.log('[Scraper] Main data extracted');
 
-        // 6. Open popup for additional data (mirrors Python L375-427)
+        // 6. Open popup for additional data (mirrors Python L374-427)
+        progress('Abrindo popup de detalhes...', 55);
         console.log('[Scraper] Opening popup...');
         await page.locator('#btnEditar').click({ timeout: 10000 });
         await page.waitForSelector('text=Loja Angariadora', { timeout: 15000 });
 
         const rawStore = await extractByLabel(page, 'Loja Angariadora');
         const rawBuilding = await getTextSafe(page, '//label[contains(text(), "Edifício")]/following-sibling::label[1]');
+        const rawListingDate = await getTextSafe(page, '//label[contains(text(), "Data Angariação")]/../../div[4]/label');
+        const rawExpiryDate = await getTextSafe(page, '//label[contains(text(), "Data Vencimento")]/../../div[4]/label');
+        const rawPopupPrice = await getTextSafe(page, '//label[normalize-space(text())="Valor:"]/following::label[contains(text(), "R$")]');
 
         // Extract description and internal notes (last two text-left labels)
         const labelsCount = await page.locator('label.text-left').count();
@@ -315,9 +338,11 @@ export async function scrapeProperty(ref: string): Promise<PropertyData> {
             btn?.click();
         });
 
+        progress('Popup processado', 65);
         console.log('[Scraper] Popup data extracted');
 
         // 7. Enrich address with Google Geocoding
+        progress('Enriquecendo endereço com Google Geocoding...', 75);
         const fullAddress = rawComplement
             ? `${rawAddress}, ${rawComplement}, Curitiba, PR`
             : `${rawAddress}, Curitiba, PR`;
@@ -328,6 +353,7 @@ export async function scrapeProperty(ref: string): Promise<PropertyData> {
         const storeMapped = LOJAS_MAP[rawStore] || rawStore;
         const typeMapped = TIPO_IMOVEL_MAP[rawType] || rawType;
 
+        progress('Montando resultado final...', 90);
         const result: PropertyData = {
             ref,
             address: geo.address || rawAddress,
@@ -339,16 +365,21 @@ export async function scrapeProperty(ref: string): Promise<PropertyData> {
             area: parseArea(rawArea),
             bedrooms: parseIntSafe(rawBedrooms),
             parkingSpaces: parseIntSafe(rawParking),
-            brokerName: null, // Populated separately via contact data
+            brokerName: null,
             storeName: storeMapped,
             price: parsePrice(rawPrice),
             latitude: geo.lat,
             longitude: geo.lng,
             building: rawBuilding || null,
-            description: rawDescription || rawNotes || null,
-            situation: rawSituation || null
+            description: rawDescription || null,
+            situation: rawSituation || null,
+            listingDate: rawListingDate || null,
+            expiryDate: rawExpiryDate || null,
+            popupPrice: rawPopupPrice || null,
+            internalNotes: rawNotes || null
         };
 
+        progress('Concluído!', 100);
         console.log(`[Scraper] Complete for REF ${ref}:`, JSON.stringify(result, null, 2));
         return result;
 

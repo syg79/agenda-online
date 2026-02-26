@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { MapPin, Clock, Camera, Video, Plane, Check, ChevronRight, ChevronLeft, AlertCircle, Phone, Calendar, Mail, Globe, ShoppingBag, MessageCircle } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { formatPhone, isValidEmail } from '@/lib/utils';
+import ApolarRefSearch from '@/components/apolar-ref-search';
 
 // Definições de tipos
 type Service = {
@@ -800,10 +801,36 @@ function BookingForm({ companyName }: BookingFormProps) {
               <div className="space-y-6">
                 <div>
                   <h2 className="text-2xl font-bold text-slate-800 mb-2">Onde será a sessão?</h2>
-                  <p className="text-slate-600">Informe o endereço completo</p>
+                  <p className="text-slate-600">Informe o endereço completo ou busque pela referência Apolar</p>
                 </div>
 
-                <div>
+                {/* Apolar REF Search */}
+                <ApolarRefSearch
+                  compact
+                  onPropertyFound={(data) => {
+                    if (data.address) setAddress(data.address);
+                    if (data.neighborhood) setNeighborhood(data.neighborhood);
+                    if (data.zipCode) setZipCode(data.zipCode);
+                    if (data.latitude) setLatitude(data.latitude);
+                    if (data.longitude) setLongitude(data.longitude);
+                    if (data.building) setComplement(data.building);
+                    const refInfo = [`Ref: ${data.ref}`];
+                    if (data.propertyType) refInfo.push(`Tipo: ${data.propertyType}`);
+                    if (data.storeName) refInfo.push(`Loja: ${data.storeName}`);
+                    setNotes(refInfo.join(' | '));
+                  }}
+                  onClear={() => {
+                    setAddress('');
+                    setNeighborhood('');
+                    setZipCode('');
+                    setLatitude(null);
+                    setLongitude(null);
+                    setComplement('');
+                    setNotes('');
+                  }}
+                />
+
+                <div className="border-t border-slate-200 pt-4">
                   <label className="block text-sm font-medium text-slate-700 mb-2">Endereço Completo *</label>
                   <div className="relative">
                     <MapPin className="absolute left-3 top-3.5 w-5 h-5 text-slate-400" />

@@ -14,3 +14,19 @@ services:
       resources:
         limits:
           memory: 2g
+
+  scraper-worker:
+    build: ./scraper-worker
+    container_name: scraper-worker
+    restart: unless-stopped
+    ports:
+      - "3034:3034"
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - BROWSERLESS_WS=ws://browserless:3000?token=${BROWSERLESS_TOKEN:-vitrine2026}
+      - APOLAR_USER=${APOLAR_USER}
+      - APOLAR_PASS=${APOLAR_PASS}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - WORKER_TOKEN=${BROWSERLESS_TOKEN:-vitrine2026}
+    depends_on:
+      - browserless

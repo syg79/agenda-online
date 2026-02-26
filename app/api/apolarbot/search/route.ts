@@ -1,102 +1,70 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { PrismaClient } from '@prisma/client';
-import { scrapeProperty, isMaintenanceWindow, validateRef } from '@/lib/apolar-scraper';
+import { validateRef, isMaintenanceWindow } from '@/lib/apolar-scraper';
 
 const prisma = new PrismaClient();
 
+const WORKER_URL = process.env.SCRAPER_WORKER_URL || 'http://163.176.48.60:3034';
+const WORKER_TOKEN = process.env.WORKER_TOKEN || 'vitrine2026';
+
+export async function POST(request: NextRequest) {
+    const body = await request.json();
+    const ref = body.ref?.trim();
+
+    if (!ref || !validateRef(ref)) {
+        return Response.json({ error: 'Referência inválida. Deve conter 6 dígitos.' }, { status: 400 });
+    }
+
+    // Check cache first
+    const cached = await prisma.property.findUnique({ where: { ref } });
+    if (cached) {
+        // Check for existing bookings with this REF
+        const bookings = await prisma.booking.findMany({
+            where: { notes: { contains: `Ref: ${ref}` } },
+            select: { id: true, date: true, status: true, clientName: true, services: true },
+            orderBy: { date: 'desc' },
+            take: 5
+        });
+        return Response.json({ success: true, source: 'cache', data: cached, bookings });
+    }
+
+    // Maintenance check
+    if (isMaintenanceWindow()) {
+        return Response.json({ error: 'Opção indisponível entre 02:00 e 06:00.' }, { status: 503 });
+    }
+
+    // Create job
+    const job = await prisma.scrapeJob.create({
+        data: { ref, status: 'pending', percent: 0, step: 'Na fila...' }
+    });
+
+    // Fire-and-forget to Oracle VM worker
+    try {
+        fetch(`${WORKER_URL}/scrape`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-worker-token': WORKER_TOKEN },
+            body: JSON.stringify({ jobId: job.id, ref })
+        }).catch(err => console.error('[ApolarBot] Worker call failed:', err.message));
+    } catch (err: any) {
+        console.error('[ApolarBot] Worker unreachable:', err.message);
+    }
+
+    // Return immediately with jobId
+    return Response.json({ success: true, jobId: job.id, status: 'processing' });
+}
+
+// GET for cache-only lookup (backward compat)
 export async function GET(request: NextRequest) {
     const ref = request.nextUrl.searchParams.get('ref')?.trim();
 
-    if (!ref) {
-        return NextResponse.json({ error: 'Parâmetro "ref" obrigatório' }, { status: 400 });
+    if (!ref || !validateRef(ref)) {
+        return Response.json({ error: 'Referência inválida.' }, { status: 400 });
     }
 
-    if (!validateRef(ref)) {
-        return NextResponse.json({ error: 'Referência inválida. Deve conter 6 dígitos numéricos.' }, { status: 400 });
+    const cached = await prisma.property.findUnique({ where: { ref } });
+    if (cached) {
+        return Response.json({ success: true, source: 'cache', data: cached });
     }
 
-    try {
-        // 1. Check cache first
-        const cached = await prisma.property.findUnique({ where: { ref } });
-        if (cached) {
-            console.log(`[ApolarBot] Cache hit for REF ${ref}`);
-            return NextResponse.json({
-                success: true,
-                source: 'cache',
-                data: cached
-            });
-        }
-
-        // 2. Check maintenance window (02:00-06:00 BRT)
-        if (isMaintenanceWindow()) {
-            return NextResponse.json({
-                success: false,
-                error: 'O sistema da Apolar está em manutenção entre 02:00 e 06:00. Tente novamente após as 06:00.',
-                maintenanceWindow: true
-            }, { status: 503 });
-        }
-
-        // 3. Scrape on-demand
-        console.log(`[ApolarBot] Cache miss for REF ${ref}, starting scrape...`);
-        const scrapedData = await scrapeProperty(ref);
-
-        // 4. Save to cache
-        const property = await prisma.property.create({
-            data: {
-                ref: scrapedData.ref,
-                address: scrapedData.address,
-                neighborhood: scrapedData.neighborhood,
-                city: scrapedData.city,
-                state: scrapedData.state,
-                zipCode: scrapedData.zipCode,
-                propertyType: scrapedData.propertyType,
-                area: scrapedData.area,
-                bedrooms: scrapedData.bedrooms,
-                parkingSpaces: scrapedData.parkingSpaces,
-                brokerName: scrapedData.brokerName,
-                storeName: scrapedData.storeName,
-                price: scrapedData.price,
-                latitude: scrapedData.latitude,
-                longitude: scrapedData.longitude,
-                building: scrapedData.building,
-                description: scrapedData.description,
-                situation: scrapedData.situation,
-                rawData: scrapedData as any
-            }
-        });
-
-        // 5. Log sync
-        await prisma.syncLog.create({
-            data: {
-                source: 'apolarbot',
-                status: 'success',
-                imported: 1,
-                details: { ref, source: 'scrape' }
-            }
-        });
-
-        return NextResponse.json({
-            success: true,
-            source: 'scrape',
-            data: property
-        });
-
-    } catch (error: any) {
-        console.error(`[ApolarBot] Error for REF ${ref}:`, error);
-
-        await prisma.syncLog.create({
-            data: {
-                source: 'apolarbot',
-                status: 'error',
-                errors: 1,
-                details: { ref, error: error.message }
-            }
-        }).catch(() => { });
-
-        return NextResponse.json({
-            success: false,
-            error: error.message || 'Erro ao buscar imóvel',
-            ref
-        }, { status: 500 });
-    }
+    return Response.json({ success: false, error: 'Não encontrado no cache.' }, { status: 404 });
 }

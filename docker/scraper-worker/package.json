@@ -1,0 +1,13 @@
+{
+    "name": "scraper-worker",
+    "version": "1.0.0",
+    "private": true,
+    "scripts": {
+        "start": "node worker.js"
+    },
+    "dependencies": {
+        "express": "^4.21.0",
+        "pg": "^8.13.0",
+        "playwright-core": "^1.49.0"
+    }
+}
