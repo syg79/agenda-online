@@ -14,7 +14,8 @@ export async function getAvailability(
     serviceIds: string[],
     neighborhood?: string,
     lat?: number,
-    lng?: number
+    lng?: number,
+    isAdmin: boolean = false
 ): Promise<TimeSlot[]> {
     const dateStr = date.toISOString().split('T')[0];
     const dayOfWeek = date.getUTCDay(); // 0=Sun, 6=Sat
@@ -45,11 +46,14 @@ export async function getAvailability(
     // 3. Filter Photographers by Capability and Location (Rules Engine)
     const qualifiedPhotographers = await getValidPhotographers(neighborhood || '', serviceIds, lat, lng);
 
+    console.log(`[Availability] Qualifed Photographers for ${neighborhood}:`, qualifiedPhotographers.map(p => p.name));
+
     if (qualifiedPhotographers.length === 0) return [];
 
     const qualifiedIds = qualifiedPhotographers.map(p => p.id);
 
     // 4. Fetch Existing Bookings and Blocks
+    // We fetch bookings for our qualified photographers OR unassigned bookings (null)
     const bookings = await prisma.booking.findMany({
         where: {
             date: {
@@ -57,7 +61,10 @@ export async function getAvailability(
                 lte: new Date(`${dateStr}T23:59:59.999Z`),
             },
             status: { not: 'CANCELED' },
-            photographerId: { in: qualifiedIds }
+            OR: [
+                { photographerId: { in: qualifiedIds } },
+                { photographerId: null }
+            ]
         }
     });
 
@@ -77,9 +84,7 @@ export async function getAvailability(
     const slots: TimeSlot[] = [];
 
     for (const hour of desiredHours) {
-        const h = hour;
-        const m = '00';
-        const timeStr = `${h.toString().padStart(2, '0')}:${m}`;
+        const timeStr = `${hour.toString().padStart(2, '0')}:00`;
 
         // Calculate end time of this POTENTIAL booking
         const startMinutes = hour * 60;
@@ -91,21 +96,17 @@ export async function getAvailability(
         // Check if finishes after closing time (19:00 = 19 * 60 = 1140)
         if (endMinutes > 19 * 60) continue;
 
-        // 6. Check Availability for each photographer
-        let availableCount = 0;
-
-        for (const ph of qualifiedPhotographers) {
-            // Check Bookings
+        // 6. Calculate Available Capacity
+        // Start with photographers who have no assigned conflicts
+        const freePhotographers = qualifiedPhotographers.filter(ph => {
+            // Check Assigned Bookings
             const phBookings = bookings.filter(b => b.photographerId === ph.id);
             const hasBookingConflict = phBookings.some(b => {
                 const bStart = timeToMinutes(b.time);
                 const bEnd = bStart + b.duration;
-                // Conflict if intervals overlap
-                // (StartA < EndB) && (EndA > StartB)
                 return (startMinutes < bEnd) && (endMinutes > bStart);
             });
-
-            if (hasBookingConflict) continue;
+            if (hasBookingConflict) return false;
 
             // Check Blocks
             const phBlocks = blocks.filter(b => b.photographerId === ph.id);
@@ -114,31 +115,50 @@ export async function getAvailability(
                 const bEnd = timeToMinutes(b.endTime);
                 return (startMinutes < bEnd) && (endMinutes > bStart);
             });
+            if (hasBlockConflict) return false;
 
-            if (hasBlockConflict) continue;
+            return true;
+        });
 
-            // --- SMART SCHEDULING INTEGRATION (Phase 8) ---
+        // Smart Scheduling check for each remaining free photographer
+        let availableCount = 0;
+        for (const ph of freePhotographers) {
             if (lat && lng) {
+                const phBookings = bookings.filter(b => b.photographerId === ph.id);
                 const viability = await checkSlotViability(
                     startMinutes,
                     endMinutes,
                     lat,
                     lng,
-                    phBookings // Pass only this photographer's bookings
+                    phBookings
                 );
-
                 if (viability === 'IMPOSSIBLE') continue;
             }
-            // ----------------------------------------------
-
             availableCount++;
         }
 
-        if (availableCount > 0) {
+        // Subtract Unassigned Bookings from the capacity pool ONLY FOR CLIENTS
+        // Secretaries (isAdmin) can see full capacity to manually assign/override
+        let unassignedConflictsCount = 0;
+        if (!isAdmin) {
+            const unassignedBookings = bookings.filter(b => b.photographerId === null);
+            const unassignedConflicts = unassignedBookings.filter(b => {
+                const bStart = timeToMinutes(b.time);
+                const bEnd = bStart + b.duration;
+                return (startMinutes < bEnd) && (endMinutes > bStart);
+            });
+            unassignedConflictsCount = unassignedConflicts.length;
+        }
+
+        const finalCount = Math.max(0, availableCount - unassignedConflictsCount);
+
+        console.log(`[Availability] Slot ${timeStr}: Qualified=${availableCount}, UnassignedConflicts=${unassignedConflictsCount}, Final=${finalCount}, isAdmin=${isAdmin}`);
+
+        if (finalCount > 0) {
             slots.push({
                 time: timeStr,
                 endTime: endTimeStr,
-                available: availableCount
+                available: finalCount
             });
         }
     }

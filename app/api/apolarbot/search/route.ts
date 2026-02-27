@@ -10,22 +10,25 @@ const WORKER_TOKEN = process.env.WORKER_TOKEN || 'vitrine2026';
 export async function POST(request: NextRequest) {
     const body = await request.json();
     const ref = body.ref?.trim();
+    const force = body.force === true;
 
-    if (!ref || !validateRef(ref)) {
-        return Response.json({ error: 'Referência inválida. Deve conter 6 dígitos.' }, { status: 400 });
+    if (!ref || !/^\d{5,6}$/.test(ref)) {
+        return Response.json({ error: 'Referência inválida. Deve conter 5 ou 6 dígitos.' }, { status: 400 });
     }
 
-    // Check cache first
-    const cached = await prisma.property.findUnique({ where: { ref } });
-    if (cached) {
-        // Check for existing bookings with this REF
-        const bookings = await prisma.booking.findMany({
-            where: { notes: { contains: `Ref: ${ref}` } },
-            select: { id: true, date: true, status: true, clientName: true, services: true },
-            orderBy: { date: 'desc' },
-            take: 5
-        });
-        return Response.json({ success: true, source: 'cache', data: cached, bookings });
+    // Check cache first (unless forced)
+    if (!force) {
+        const cached = await prisma.property.findUnique({ where: { ref } });
+        if (cached) {
+            // Check for existing bookings with this REF
+            const bookings = await prisma.booking.findMany({
+                where: { notes: { contains: `Ref: ${ref}` } },
+                select: { id: true, date: true, status: true, clientName: true, services: true },
+                orderBy: { date: 'desc' },
+                take: 5
+            });
+            return Response.json({ success: true, source: 'cache', data: cached, bookings });
+        }
     }
 
     // Maintenance check

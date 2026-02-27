@@ -242,6 +242,7 @@ async function executeScrape(jobId, ref) {
             propertyType: typeMapped, area: parseArea(rawArea), bedrooms: parseInt2(rawBedrooms),
             parkingSpaces: parseInt2(rawParking), storeName: storeMapped, price: parsePrice(rawPrice),
             latitude: geo.lat, longitude: geo.lng, building: rawBuilding || null,
+            complement: rawComplement || null,
             description: rawDescription || null, situation: rawSituation || null,
             listingDate: rawListingDate || null, expiryDate: rawExpiryDate || null,
             popupPrice: rawPopupPrice || null, internalNotes: rawNotes || null
@@ -249,17 +250,17 @@ async function executeScrape(jobId, ref) {
 
         // Save to Property table (upsert)
         await pool.query(`
-            INSERT INTO "Property" (id, ref, address, neighborhood, city, state, "zipCode", "propertyType", area, bedrooms, "parkingSpaces", "brokerName", "storeName", price, latitude, longitude, building, description, situation, "rawData", "scrapedAt", "updatedAt")
-            VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NULL, $11, $12, $13, $14, $15, $16, $17, $18::jsonb, NOW(), NOW())
+            INSERT INTO "Property" (id, ref, address, neighborhood, city, state, "zipCode", "propertyType", area, bedrooms, "parkingSpaces", "brokerName", "storeName", price, latitude, longitude, building, complement, description, situation, "rawData", "scrapedAt", "updatedAt")
+            VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NULL, $11, $12, $13, $14, $15, $16, $17, $18, $19::jsonb, NOW(), NOW())
             ON CONFLICT (ref) DO UPDATE SET
                 address = $2, neighborhood = $3, city = $4, state = $5, "zipCode" = $6, "propertyType" = $7,
                 area = $8, bedrooms = $9, "parkingSpaces" = $10, "storeName" = $11, price = $12,
-                latitude = $13, longitude = $14, building = $15, description = $16, situation = $17,
-                "rawData" = $18::jsonb, "updatedAt" = NOW()
+                latitude = $13, longitude = $14, building = $15, complement = $16, description = $17, situation = $18,
+                "rawData" = $19::jsonb, "updatedAt" = NOW()
         `, [ref, result.address, result.neighborhood, result.city, result.state, result.zipCode,
             result.propertyType, result.area, result.bedrooms, result.parkingSpaces, result.storeName,
-            result.price, result.latitude, result.longitude, result.building, result.description,
-            result.situation, JSON.stringify(result)]);
+            result.price, result.latitude, result.longitude, result.building, result.complement,
+            result.description, result.situation, JSON.stringify(result)]);
 
         // Complete
         await updateJob(jobId, { status: 'complete', percent: 100, step: 'Concluído!', result: JSON.stringify(result), updatedAt: new Date() });

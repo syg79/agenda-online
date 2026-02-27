@@ -23,8 +23,11 @@ export async function POST(request: Request) {
       selectedTime,
       totalDuration,
       totalPrice,
-      sourceProtocol, // New optional field
-      brokerDetails // New field
+      sourceProtocol,
+      brokerDetails,
+      propertyType,
+      area,
+      building
     } = body;
 
     // 1. Validação básica
@@ -59,7 +62,6 @@ export async function POST(request: Request) {
             notes,
             address,
             neighborhood,
-            // @ts-ignore
             zipCode,
             complement,
             latitude,
@@ -71,7 +73,9 @@ export async function POST(request: Request) {
             status: 'CONFIRMED',
             price: totalPrice,
             brokerDetails,
-            // Protocol remains the same
+            propertyType,
+            area,
+            building
           }
         });
       }
@@ -94,7 +98,6 @@ export async function POST(request: Request) {
           notes,
           address,
           neighborhood,
-          // @ts-ignore
           zipCode,
           complement,
           latitude,
@@ -106,7 +109,10 @@ export async function POST(request: Request) {
           status: 'CONFIRMED',
           price: totalPrice,
           paymentStatus: 'PENDING',
-          brokerDetails
+          brokerDetails,
+          propertyType,
+          area,
+          building
         }
       });
     }
@@ -152,7 +158,12 @@ export async function POST(request: Request) {
     });
 
   } catch (error: any) {
-    console.error('Erro ao criar agendamento:', error);
+    console.error('❌ ERRO CRÍTICO NO AGENDAMENTO:', {
+      message: error.message,
+      stack: error.stack,
+      code: error.code,
+      details: error
+    });
 
     // Tratamento de erro específico do Prisma (ex: tabela não existe)
     if (error.code === 'P2021') {
@@ -163,7 +174,7 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json(
-      { error: 'Falha ao processar agendamento. Tente novamente.' },
+      { error: `Falha ao processar agendamento: ${error.message || 'Tente novamente.'}` },
       { status: 500 }
     );
   }

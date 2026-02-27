@@ -489,7 +489,7 @@ export default function SecretaryDashboard() {
                             {isSyncing ? 'SYNCING...' : 'ATUALIZAR LISTA'}
                         </button>
 
-                        <Link href="/agendar" className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-[10px] font-black transition shadow-md flex items-center gap-1 active:scale-95 tracking-widest">
+                        <Link href="/agendar?admin=true" className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-[10px] font-black transition shadow-md flex items-center gap-1 active:scale-95 tracking-widest">
                             <FileText className="w-3.5 h-3.5" />
                             Novo pedido
                         </Link>

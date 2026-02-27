@@ -74,6 +74,7 @@ async function checkCoverage(neighborhood: string, selectedServices: string[], l
 
 function BookingForm({ companyName }: BookingFormProps) {
   const searchParams = useSearchParams();
+  const isAdmin = searchParams.get('admin') === 'true';
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
   const [showManualScheduling, setShowManualScheduling] = useState(false);
   const [showPrices, setShowPrices] = useState(false); // Controle facultativo de preços
@@ -110,6 +111,10 @@ function BookingForm({ companyName }: BookingFormProps) {
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
 
+  const [area, setArea] = useState<number | null>(null);
+  const [building, setBuilding] = useState('');
+  const [propertyType, setPropertyType] = useState('');
+
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (message: string) => {
@@ -145,6 +150,9 @@ function BookingForm({ companyName }: BookingFormProps) {
             if (data.neighborhood) setNeighborhood(data.neighborhood);
             if (data.zipCode) setZipCode(data.zipCode);
             if (data.complement) setComplement(data.complement);
+            if (data.area) setArea(data.area);
+            if (data.building) setBuilding(data.building);
+            if (data.propertyType) setPropertyType(data.propertyType);
             if (data.notes) setNotes(data.notes);
 
             if (data.services && Array.isArray(data.services)) {
@@ -609,6 +617,9 @@ function BookingForm({ companyName }: BookingFormProps) {
 
         sourceProtocol: searchParams.get('protocol'), // Send original protocol if editing
         brokerDetails: brokerDetails, // Pass broker details to API
+        area,
+        building,
+        propertyType
       };
 
       const response = await fetch('/api/bookings', {
@@ -807,17 +818,20 @@ function BookingForm({ companyName }: BookingFormProps) {
                 {/* Apolar REF Search */}
                 <ApolarRefSearch
                   compact
+                  isAdmin={isAdmin}
                   onPropertyFound={(data) => {
-                    if (data.address) setAddress(data.address);
-                    if (data.neighborhood) setNeighborhood(data.neighborhood);
-                    if (data.zipCode) setZipCode(data.zipCode);
-                    if (data.latitude) setLatitude(data.latitude);
-                    if (data.longitude) setLongitude(data.longitude);
-                    if (data.building) setComplement(data.building);
-                    const refInfo = [`Ref: ${data.ref}`];
-                    if (data.propertyType) refInfo.push(`Tipo: ${data.propertyType}`);
-                    if (data.storeName) refInfo.push(`Loja: ${data.storeName}`);
-                    setNotes(refInfo.join(' | '));
+                    setAddress(data.address || '');
+                    setNeighborhood(data.neighborhood || '');
+                    setZipCode(data.zipCode || '');
+                    setLatitude(data.latitude || null);
+                    setLongitude(data.longitude || null);
+                    setComplement(data.complement || '');
+                    setArea(data.area || null);
+                    setBuilding(data.building || '');
+                    setPropertyType(data.propertyType || '');
+
+                    // User requested to NOT pre-fill notes with technical data
+                    setNotes('');
                   }}
                   onClear={() => {
                     setAddress('');
@@ -826,6 +840,9 @@ function BookingForm({ companyName }: BookingFormProps) {
                     setLatitude(null);
                     setLongitude(null);
                     setComplement('');
+                    setArea(null);
+                    setBuilding('');
+                    setPropertyType('');
                     setNotes('');
                   }}
                 />

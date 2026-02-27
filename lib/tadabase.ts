@@ -7,6 +7,7 @@ export const FIELDS = {
     complement: 'field_136',   // Complemento
     type: 'field_92',          // Tipo de Imóvel
     area: 'field_95',          // Área Total
+    building: 'field_96',      // Nome do Condominio
     client: 'field_86',        // Cliente (Loja - Connection)
     status: 'field_114',       // Status (Select)
     serviceType: 'field_110',  // Tipo serviço (Checkbox)
@@ -529,6 +530,7 @@ export const tadabase = {
                 [FIELDS.complement]: booking.complement,
                 [FIELDS.type]: TIPO_IMOVEL_MAP[booking.propertyType] || 'Ap',
                 [FIELDS.area]: booking.area ? booking.area.toString().replace('.', ',') : '0',
+                [FIELDS.building]: booking.building,
                 [FIELDS.address]: addressPayload,
                 [FIELDS.serviceType]: serviceNames,
                 [FIELDS.rede]: 'DVWQWRNZ49', // Apolar
@@ -634,14 +636,15 @@ export const tadabase = {
             return result;
 
         } catch (error: any) {
-            console.error('❌ Tadabase Sync Exception:', error);
+            console.error('❌ EXCEÇÃO NO SYNC TADABASE:', {
+                message: error.message,
+                protocol: booking.protocol,
+                id: booking.id
+            });
             if (error.response) {
                 return { error: `Response Error: ${JSON.stringify(error.response.data)}` };
-            } else if (error.request) {
-                return { error: `Request Error: ${JSON.stringify(error.request)}` };
-            } else {
-                return { error: `Exception: ${error.message}` };
             }
+            throw error;
         }
     }
 };

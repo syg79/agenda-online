@@ -19,6 +19,7 @@ interface PropertyResult {
     latitude: number | null;
     longitude: number | null;
     building: string | null;
+    complement: string | null;
     description: string | null;
     situation: string | null;
     listingDate: string | null;
@@ -32,9 +33,10 @@ interface ApolarRefSearchProps {
     onError?: (message: string) => void;
     onClear?: () => void;
     compact?: boolean;
+    isAdmin?: boolean;
 }
 
-export default function ApolarRefSearch({ onPropertyFound, onError, onClear, compact = false }: ApolarRefSearchProps) {
+export default function ApolarRefSearch({ onPropertyFound, onError, onClear, compact = false, isAdmin = false }: ApolarRefSearchProps) {
     const [ref, setRef] = useState('');
     const [isSearching, setIsSearching] = useState(false);
     const [progress, setProgress] = useState(0);
@@ -51,16 +53,16 @@ export default function ApolarRefSearch({ onPropertyFound, onError, onClear, com
         return brHour >= 2 && brHour < 6;
     }, []);
 
-    const handleSearch = async () => {
+    const handleSearch = async (forceSearch = false) => {
         const cleanRef = ref.trim();
         if (!/^\d{6}$/.test(cleanRef)) {
-            setError('Referência inválida. Deve conter 6 dígitos.');
+            setError('Referência inválida. Deve conter exatamente 6 dígitos.');
             return;
         }
 
         setIsSearching(true);
         setProgress(0);
-        setProgressStep('Verificando...');
+        setProgressStep(forceSearch ? 'Forçando atualização...' : 'Verificando...');
         setError('');
         setResult(null);
         setSource(null);
@@ -72,7 +74,7 @@ export default function ApolarRefSearch({ onPropertyFound, onError, onClear, com
             const response = await fetch('/api/apolarbot/search', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ref: cleanRef }),
+                body: JSON.stringify({ ref: cleanRef, force: forceSearch }),
                 signal: abortRef.current.signal
             });
 
@@ -160,7 +162,7 @@ export default function ApolarRefSearch({ onPropertyFound, onError, onClear, com
     };
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter' && !isSearching) handleSearch();
+        if (e.key === 'Enter' && !isSearching) handleSearch(false);
     };
 
     const formatPrice = (price: number | null) => {
@@ -183,7 +185,7 @@ export default function ApolarRefSearch({ onPropertyFound, onError, onClear, com
                             value={ref}
                             onChange={(e) => setRef(e.target.value.replace(/\D/g, '').slice(0, 6))}
                             onKeyDown={handleKeyDown}
-                            placeholder="000000"
+                            placeholder="00000"
                             maxLength={6}
                             disabled={isSearching}
                             className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-lg tracking-widest font-mono disabled:bg-slate-100"
@@ -191,8 +193,8 @@ export default function ApolarRefSearch({ onPropertyFound, onError, onClear, com
                     </div>
                     {!isSearching ? (
                         <button
-                            onClick={handleSearch}
-                            disabled={ref.length !== 6}
+                            onClick={() => handleSearch(false)}
+                            disabled={ref.trim().length !== 6}
                             className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
                         >
                             Buscar
@@ -250,7 +252,16 @@ export default function ApolarRefSearch({ onPropertyFound, onError, onClear, com
                                 REF {result.ref}
                             </span>
                             {source === 'cache' && (
-                                <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">Dados encontrados!</span>
+                                <div className="flex items-center gap-1.5">
+                                    <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">Dados encontrados!</span>
+                                    <button
+                                        onClick={() => handleSearch(true)}
+                                        title="Recarregar dados (limpar cache)"
+                                        className="p-1 hover:bg-emerald-100 text-emerald-600 rounded-md transition-colors"
+                                    >
+                                        <History className="w-3.5 h-3.5" />
+                                    </button>
+                                </div>
                             )}
                             {source === 'scrape' && (
                                 <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">Atualizado agora</span>
@@ -273,62 +284,74 @@ export default function ApolarRefSearch({ onPropertyFound, onError, onClear, com
                             </div>
                         )}
 
-                        {result.building && (
+                        {result.complement && (
                             <div className="flex items-center gap-2">
-                                <Building2 className="w-4 h-4 text-slate-500 shrink-0" />
-                                <span className="text-slate-700">{result.building}</span>
+                                <MapPin className="w-4 h-4 text-slate-500 shrink-0" />
+                                <span className="text-slate-700 font-medium">{result.complement}</span>
                             </div>
                         )}
 
-                        {result.propertyType && (
-                            <div className="flex items-center gap-2">
-                                <FileText className="w-4 h-4 text-slate-500 shrink-0" />
-                                <span className="text-slate-700">{result.propertyType}</span>
-                            </div>
-                        )}
+                        {/* Technical/Admin details only show for isAdmin */}
+                        {isAdmin && (
+                            <>
+                                {result.building && (
+                                    <div className="flex items-center gap-2">
+                                        <Building2 className="w-4 h-4 text-slate-500 shrink-0" />
+                                        <span className="text-slate-700">{result.building}</span>
+                                    </div>
+                                )}
 
-                        {result.area && (
-                            <div className="flex items-center gap-2">
-                                <Ruler className="w-4 h-4 text-slate-500 shrink-0" />
-                                <span className="text-slate-700">{result.area} m²</span>
-                            </div>
-                        )}
+                                {result.propertyType && (
+                                    <div className="flex items-center gap-2">
+                                        <FileText className="w-4 h-4 text-slate-500 shrink-0" />
+                                        <span className="text-slate-700">{result.propertyType}</span>
+                                    </div>
+                                )}
 
-                        {result.bedrooms !== null && (
-                            <div className="flex items-center gap-2">
-                                <BedDouble className="w-4 h-4 text-slate-500 shrink-0" />
-                                <span className="text-slate-700">{result.bedrooms} quarto{result.bedrooms !== 1 ? 's' : ''}</span>
-                            </div>
-                        )}
+                                {result.area && (
+                                    <div className="flex items-center gap-2">
+                                        <Ruler className="w-4 h-4 text-slate-500 shrink-0" />
+                                        <span className="text-slate-700">{result.area} m²</span>
+                                    </div>
+                                )}
 
-                        {result.parkingSpaces !== null && (
-                            <div className="flex items-center gap-2">
-                                <Car className="w-4 h-4 text-slate-500 shrink-0" />
-                                <span className="text-slate-700">{result.parkingSpaces} vaga{result.parkingSpaces !== 1 ? 's' : ''}</span>
-                            </div>
-                        )}
+                                {result.bedrooms !== null && (
+                                    <div className="flex items-center gap-2">
+                                        <BedDouble className="w-4 h-4 text-slate-500 shrink-0" />
+                                        <span className="text-slate-700">{result.bedrooms} quarto{result.bedrooms !== 1 ? 's' : ''}</span>
+                                    </div>
+                                )}
 
-                        {result.storeName && (
-                            <div className="flex items-center gap-2">
-                                <Store className="w-4 h-4 text-slate-500 shrink-0" />
-                                <span className="text-slate-700">Loja {result.storeName}</span>
-                            </div>
-                        )}
+                                {result.parkingSpaces !== null && (
+                                    <div className="flex items-center gap-2">
+                                        <Car className="w-4 h-4 text-slate-500 shrink-0" />
+                                        <span className="text-slate-700">{result.parkingSpaces} vaga{result.parkingSpaces !== 1 ? 's' : ''}</span>
+                                    </div>
+                                )}
 
-                        {result.price && (
-                            <div className="flex items-center gap-2">
-                                <DollarSign className="w-4 h-4 text-slate-500 shrink-0" />
-                                <span className="text-slate-700">{formatPrice(result.price)}</span>
-                            </div>
-                        )}
+                                {result.storeName && (
+                                    <div className="flex items-center gap-2">
+                                        <Store className="w-4 h-4 text-slate-500 shrink-0" />
+                                        <span className="text-slate-700">Loja {result.storeName}</span>
+                                    </div>
+                                )}
 
-                        {result.situation && (
-                            <div className="flex items-center gap-2">
-                                <Calendar className="w-4 h-4 text-slate-500 shrink-0" />
-                                <span className={`text-sm font-medium ${result.situation === 'Vendido' ? 'text-red-600' : result.situation === 'Disponível' ? 'text-emerald-600' : 'text-amber-600'}`}>
-                                    {result.situation}
-                                </span>
-                            </div>
+                                {result.price && (
+                                    <div className="flex items-center gap-2">
+                                        <DollarSign className="w-4 h-4 text-slate-500 shrink-0" />
+                                        <span className="text-slate-700">{formatPrice(result.price)}</span>
+                                    </div>
+                                )}
+
+                                {result.situation && (
+                                    <div className="flex items-center gap-2">
+                                        <Calendar className="w-4 h-4 text-slate-500 shrink-0" />
+                                        <span className={`text-sm font-medium ${result.situation === 'Vendido' ? 'text-red-600' : result.situation === 'Disponível' ? 'text-emerald-600' : 'text-amber-600'}`}>
+                                            {result.situation}
+                                        </span>
+                                    </div>
+                                )}
+                            </>
                         )}
                     </div>
 
@@ -354,16 +377,33 @@ export default function ApolarRefSearch({ onPropertyFound, onError, onClear, com
                                         'WAITING_RETURN': { label: 'Aguardando retorno', color: 'text-purple-700 bg-purple-100' },
                                     };
                                     const st = statusMap[b.status] || { label: b.status, color: 'text-slate-700 bg-slate-100' };
+
+                                    // Translate service IDs to friendly names
+                                    const serviceLabels: Record<string, string> = {
+                                        'photo': 'FOTOS',
+                                        'video_landscape': 'VÍDEO (Horizontal)',
+                                        'video_portrait': 'VÍDEO (Vertical)',
+                                        'drone_photo': 'DRONE FOTOS',
+                                        'drone_photo_video': 'DRONE FOTO+VÍDEO'
+                                    };
+
                                     return (
-                                        <div key={b.id} className="flex items-center gap-2 text-xs">
-                                            <span className="text-amber-700">{dayName}, {dateStr}</span>
-                                            <span className={`px-1.5 py-0.5 rounded-full font-medium ${st.color}`}>{st.label}</span>
-                                            <span className="text-slate-500">— {b.clientName}</span>
+                                        <div key={b.id} className="flex flex-col gap-0.5 text-sm">
+                                            <div className="flex items-center gap-1.5 font-medium text-amber-900">
+                                                <span className="capitalize">{st.label}: {dayName}, {dateStr} - as {b.time}</span>
+                                            </div>
+                                            <div className="flex flex-wrap gap-1">
+                                                {(b.services || []).map((s: string) => (
+                                                    <span key={s} className="text-xs font-extrabold text-amber-800">
+                                                        {serviceLabels[s] || s.toUpperCase()}
+                                                    </span>
+                                                ))}
+                                            </div>
                                         </div>
                                     );
                                 })}
                             </div>
-                            <p className="text-xs text-amber-600 mt-2">
+                            <p className="text-sm text-amber-700 mt-2 font-medium">
                                 Deseja criar um novo pedido mesmo assim? Continue preenchendo o formulário abaixo.
                             </p>
                         </div>

@@ -35,6 +35,8 @@ model Booking {
   zipCode        String?
   propertyType   String?       // field_102 from Tadabase (Ap, Casa, etc.)
   brokerDetails  String?       // field_177 from Tadabase (Name + Phone)
+  area           Float?        // field_95
+  building       String?       // field_96
   photographer   Photographer? @relation(fields: [photographerId], references: [id])
 }
 
@@ -164,6 +166,7 @@ model Property {
   latitude      Float?
   longitude     Float?
   building      String?
+  complement    String?
   description   String?
   situation     String?
   rawData       Json?
