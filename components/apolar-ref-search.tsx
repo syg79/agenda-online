@@ -29,11 +29,11 @@ interface PropertyResult {
 }
 
 interface ApolarRefSearchProps {
-    onPropertyFound?: (data: PropertyResult) => void;
-    onError?: (message: string) => void;
-    onClear?: () => void;
     compact?: boolean;
     isAdmin?: boolean;
+    onPropertyFound?: (data: any, bookings: any[]) => void;
+    onClear?: () => void;
+    onError?: (error: string) => void;
 }
 
 export default function ApolarRefSearch({ onPropertyFound, onError, onClear, compact = false, isAdmin = false }: ApolarRefSearchProps) {
@@ -92,7 +92,7 @@ export default function ApolarRefSearch({ onPropertyFound, onError, onClear, com
                 setProgressStep('Dados encontrados!');
                 setResult(data.data);
                 setBookings(data.bookings || []);
-                onPropertyFound?.(data.data);
+                onPropertyFound?.(data.data, data.bookings || []);
                 return;
             }
 
@@ -116,7 +116,8 @@ export default function ApolarRefSearch({ onPropertyFound, onError, onClear, com
                     setProgress(100);
                     setProgressStep('Concluído!');
                     setResult(statusData.data);
-                    onPropertyFound?.(statusData.data);
+                    setBookings(statusData.bookings || []);
+                    onPropertyFound?.(statusData.data, statusData.bookings || []);
                     return;
                 }
 
@@ -264,7 +265,7 @@ export default function ApolarRefSearch({ onPropertyFound, onError, onClear, com
                                 </div>
                             )}
                             {source === 'scrape' && (
-                                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">Atualizado agora</span>
+                                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">Busca Online Completa</span>
                             )}
                         </div>
                         <button onClick={handleClear} className="text-slate-400 hover:text-slate-600 transition-colors">
@@ -364,6 +365,9 @@ export default function ApolarRefSearch({ onPropertyFound, onError, onClear, com
                                     Já existe{bookings.length > 1 ? 'm' : ''} {bookings.length} pedido{bookings.length > 1 ? 's' : ''} para este imóvel
                                 </span>
                             </div>
+                            <p className="text-xs text-amber-700 leading-tight mb-2">
+                                Ao confirmar um novo horário para este imóvel, cancelaremos automaticamente a reserva pendente abaixo.
+                            </p>
                             <div className="space-y-1.5">
                                 {bookings.map((b: any) => {
                                     const date = new Date(b.date);
@@ -390,7 +394,7 @@ export default function ApolarRefSearch({ onPropertyFound, onError, onClear, com
                                     return (
                                         <div key={b.id} className="flex flex-col gap-0.5 text-sm">
                                             <div className="flex items-center gap-1.5 font-medium text-amber-900">
-                                                <span className="capitalize">{st.label}: {dayName}, {dateStr} - as {b.time}</span>
+                                                <span className="capitalize">{st.label}: {dayName}, {dateStr} {b.time ? `- às ${b.time}` : ''}</span>
                                             </div>
                                             <div className="flex flex-wrap gap-1">
                                                 {(b.services || []).map((s: string) => (

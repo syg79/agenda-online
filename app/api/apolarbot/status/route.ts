@@ -19,11 +19,21 @@ export async function GET(request: NextRequest) {
     if (job.status === 'complete') {
         // Fetch full property data
         const property = await prisma.property.findUnique({ where: { ref: job.ref } });
+        let bookings: any[] = [];
+        if (property) {
+            bookings = await prisma.booking.findMany({
+                where: { notes: { contains: `Ref: ${job.ref}` } },
+                select: { id: true, date: true, time: true, status: true, clientName: true, services: true },
+                orderBy: { date: 'desc' },
+                take: 5
+            });
+        }
         return Response.json({
             status: 'complete',
             percent: 100,
             step: 'Concluído!',
-            data: property || job.result
+            data: property || job.result,
+            bookings
         });
     }
 

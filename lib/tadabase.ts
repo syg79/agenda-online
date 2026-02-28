@@ -20,6 +20,7 @@ export const FIELDS = {
     obsScheduling: 'field_276',   // Observacao para o Agendamento
     date: 'field_106', // Data do Agendamento
     requestDate: 'field_103', // Data da Solicitação
+    createdAt: 'field_89', // Data e Hora da Inclusao
     time: 'field_406', // Horario da Sessao
     protocolNew: 'field_490', // Protocolo de Agendamento
     dateTimeFull: 'field_407', // Date/Time completo
@@ -27,6 +28,7 @@ export const FIELDS = {
     supabaseId: 'field_493', // Chave Única para evitar duplicidade (Supabase ID)
     conferido: 'field_474',    // Conferido (Sim/Nao)
     enviarVercel: 'field_494', // Testar Vercel (Sim/Nao)
+    origemDosDados: 'field_495', // Origem dos Dados (Tadabase/Agenda Online) - Trava de Webhook Anti-Loop
 
     // Defaults from ApolarBot
     situation: 'field_219',    // Situação: "Pre-solicitacao (cliente)"
@@ -38,6 +40,15 @@ export const FIELDS = {
     publishAgenda: 'field_223',// Publicar agenda: "Privado"
     cobranca: 'field_184',     // Cobrança: "A faturar"
 
+    // Apolar Scraper Extras
+    valorApolar: 'field_449', // Valor do imóvel Apolar
+    situacaoApolar: 'field_450', // Situação Apolar
+    dataAngariacao: 'field_451', // Data Angariação Apolar
+    dataVencimento: 'field_452', // Data Vencimento 
+    descritivoApolar: 'field_453', // Descritivo Apolar
+    dormitoriosApolar: 'field_454', // Quantidade Dormitorios 
+    garagemApolar: 'field_455', // Vagas de Garagem 
+    obsInternas: 'field_456', // Observações Internas Apolar
 
     photographer: 'q3kjZDEN6V', // Fotografo (Connection)
 };
@@ -121,6 +132,32 @@ const LOJAS_IDS: Record<string, string> = {
     "SJPinhais": "B8qQPZr16n",
     "Xaxim": "q3kjZDVN6V",
     "Novo Mundo": "oGWN5B8QlA"
+};
+
+// Aliases for Apolar stores that have different names in the system but resolve to the same ID
+const ALIAS_LOJAS_MAP: Record<string, string> = {
+    "Uberaba": "J Americas",
+    "Jardim das Americas": "J Americas",
+    "Jd Americas": "J Americas",
+    "Capao Raso": "C Raso",
+    "Capão Raso": "C Raso",
+    "Santa Candida": "S Candida",
+    "Sta Candida": "S Candida",
+    "Santa Felicidade": "S Felicidade",
+    "Sta Felicidade": "S Felicidade",
+    "Fazenda Rio Grande": "F Rio Grande",
+    "Capao da Imbuia": "C Imbuia",
+    "Centro Civico": "C Civico",
+    "Campo Comprido": "C Comprido",
+    "Santa Quiteria": "S Quiteria",
+    "Sta Quiteria": "S Quiteria",
+    "São Jose dos Pinhais": "SJPinhais",
+    "Sao Jose dos Pinhais": "SJPinhais",
+    "Jardim Social": "J Social",
+    "Jd Social": "J Social",
+    "Boa Vista": "B Vista",
+    "Jardim Botanico": "J Botanico",
+    "Jd Botanico": "J Botanico",
 };
 
 const PHOTOGRAPHER_MAP: Record<string, string> = {
@@ -409,7 +446,7 @@ export const tadabase = {
         return this.formatRecord(record);
     },
 
-    async syncBooking(booking: any) {
+    async syncBooking(booking: any, propertyData?: any) {
         const { API_URL, APP_ID, APP_KEY, APP_SECRET, TABLE_ID } = getEnv();
 
         if (!APP_ID || !APP_KEY || !APP_SECRET || !TABLE_ID) {
@@ -418,7 +455,7 @@ export const tadabase = {
         }
 
         try {
-            console.log(`🔄 Syncing booking ${booking.protocol} to Tadabase...`);
+            console.log(`[Tadabase] Sincronizando Booking: ${booking.protocol}`);
 
             const existingRecord = await this.findRecordByProtocol(booking.protocol);
             let existingRecordId = existingRecord ? existingRecord.id : null;
@@ -525,15 +562,25 @@ export const tadabase = {
             if (serviceNames.length === 0) serviceNames.push('Fotos');
 
             const payload: any = {
-                // Remove FIELDS.protocol to NOT overwrite the client Reference (field_139) used by the external system
+                [FIELDS.protocol]: propertyData?.ref || booking.protocol, // Referência Apolar (Ref. Cliente) - O MAKE usava esse para gravar a ref
                 [FIELDS.protocolNew]: booking.protocol,
                 [FIELDS.complement]: booking.complement,
                 [FIELDS.type]: TIPO_IMOVEL_MAP[booking.propertyType] || 'Ap',
-                [FIELDS.area]: booking.area ? booking.area.toString().replace('.', ',') : '0',
+                [FIELDS.area]: booking.area ? booking.area.toString() : '',
                 [FIELDS.building]: booking.building,
                 [FIELDS.address]: addressPayload,
                 [FIELDS.serviceType]: serviceNames,
                 [FIELDS.rede]: 'DVWQWRNZ49', // Apolar
+                [FIELDS.client]: propertyData?.storeName ? LOJAS_IDS[propertyData.storeName] || '' : '', // Vincula a Loja Apolar correta como "Cliente"
+                [FIELDS.origemDosDados]: 'Agenda Online', // Trava do Loop Infinito de Webhook
+
+                // Apolar Scraper Extras
+                [FIELDS.valorApolar]: propertyData?.price ? propertyData.price.toString() : '',
+                [FIELDS.situacaoApolar]: propertyData?.situation || '',
+                [FIELDS.dataAngariacao]: propertyData?.listingDate || '',
+                [FIELDS.descritivoApolar]: propertyData?.description || '',
+                [FIELDS.dormitoriosApolar]: propertyData?.bedrooms ? propertyData.bedrooms.toString() : '',
+                [FIELDS.garagemApolar]: propertyData?.parkingSpaces ? propertyData.parkingSpaces.toString() : '',
 
                 // Quantities
                 [COUNT_FIELDS.photo]: qtdFotos,         // field_118
@@ -549,19 +596,21 @@ export const tadabase = {
                 [FIELDS.obsScheduling]: booking.notes,
 
                 // Date & Time
-                [FIELDS.date]: booking.date ? new Date(booking.date).toISOString().split('T')[0] : undefined,
+                // Se for nulo ou invalido (Teste de Cadastro), envia nulo pro Tadabase não agendar
+                [FIELDS.date]: booking.date ? new Date(booking.date).toISOString().split('T')[0] : '',
                 [FIELDS.requestDate]: new Date().toISOString().split('T')[0],
-                [FIELDS.time]: booking.time,
-                [FIELDS.sessionTimeSort]: booking.time, // Same as time for sorting
-                [FIELDS.dateTimeFull]: booking.date && booking.time ? `${new Date(booking.date).toISOString().split('T')[0]} ${booking.time}` : undefined,
+                [FIELDS.createdAt]: new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }), // MM/DD/YYYY, HH:MM:SS AM/PM funciona bem
+                [FIELDS.time]: booking.time || '',
+                [FIELDS.sessionTimeSort]: booking.time || '',
+                [FIELDS.dateTimeFull]: booking.date && booking.time ? `${new Date(booking.date).toISOString().split('T')[0]} ${booking.time}` : '',
 
                 // Sincronização da Chave Única (Supabase ID e Protocolo)
                 [FIELDS.supabaseId]: booking.id, // O ID real UUID no Supabase
-                [FIELDS.protocolNew]: booking.protocol, // O Protocolo gerado
 
                 // Dynamic Status Mapping (Supabase -> Tadabase)
                 [FIELDS.status]: (() => {
                     const statusMap: Record<string, string> = {
+                        'TEST': 'Pre-solicitacao', // Status inicial pro teste
                         'PENDING': 'Pendente',
                         'RESERVED': 'Reservado',
                         'RESERVADO': 'Reservado', // Forca caso venha em PT
@@ -591,9 +640,28 @@ export const tadabase = {
             };
 
             if (booking.clientName) {
-                const lojaKey = Object.keys(LOJAS_IDS).find(key => key.toLowerCase() === booking.clientName?.toLowerCase()) || booking.clientName;
-                if (LOJAS_IDS[lojaKey]) {
+                // Remove prefixos comuns ("Apolar ", "Apolar Imóveis ") e limpa a string
+                let cleanStoreName = booking.clientName.replace(/^Apolar\s+/i, '').trim();
+
+                // Verifica se há um alias direto para o nome limpo
+                const mappedName = Object.keys(ALIAS_LOJAS_MAP).find(
+                    k => k.toLowerCase().replace(/[^a-z0-9]/g, '') === cleanStoreName.toLowerCase().replace(/[^a-z0-9]/g, '')
+                );
+
+                if (mappedName) {
+                    cleanStoreName = ALIAS_LOJAS_MAP[mappedName];
+                }
+
+                const lojaKey = Object.keys(LOJAS_IDS).find(
+                    key =>
+                        key.toLowerCase().replace(/[^a-z0-9]/g, '') ===
+                        cleanStoreName.toLowerCase().replace(/[^a-z0-9]/g, '')
+                );
+
+                if (lojaKey && LOJAS_IDS[lojaKey]) {
                     payload[FIELDS.client] = LOJAS_IDS[lojaKey];
+                } else {
+                    console.warn(`⚠️ [Tadabase] Loja '${booking.clientName}' (limpa: '${cleanStoreName}') não encontrada no Dicionário LOJAS_IDS.`);
                 }
             }
 

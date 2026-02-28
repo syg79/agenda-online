@@ -25,10 +25,35 @@ export async function POST(request: Request) {
       totalPrice,
       sourceProtocol,
       brokerDetails,
+      apolarRef,
       propertyType,
       area,
       building
     } = body;
+
+    let propertyData = null;
+    let finalNotes = notes || '';
+
+    if (apolarRef) {
+      const prop = await prisma.property.findUnique({ where: { ref: apolarRef } });
+      if (prop) {
+        propertyData = prop;
+      }
+      if (!finalNotes.includes(`Ref: ${apolarRef}`)) {
+        finalNotes = `Ref: ${apolarRef}\n${finalNotes}`;
+      }
+
+      // Cancel previous active bookings for the same exact reference to avoid double-booking
+      if (!sourceProtocol) {
+        await prisma.booking.updateMany({
+          where: {
+            notes: { contains: `Ref: ${apolarRef}` },
+            status: { in: ['PENDING', 'CONFIRMED'] }
+          },
+          data: { status: 'CANCELED' }
+        });
+      }
+    }
 
     // 1. Validação básica
     if (!clientEmail || !selectedDate || !selectedTime) {
@@ -59,7 +84,7 @@ export async function POST(request: Request) {
             clientName,
             clientEmail,
             clientPhone,
-            notes,
+            notes: finalNotes,
             address,
             neighborhood,
             zipCode,
@@ -95,7 +120,7 @@ export async function POST(request: Request) {
           clientName,
           clientEmail,
           clientPhone,
-          notes,
+          notes: finalNotes,
           address,
           neighborhood,
           zipCode,
@@ -106,7 +131,7 @@ export async function POST(request: Request) {
           date: new Date(selectedDate),
           time: selectedTime,
           duration: totalDuration,
-          status: 'CONFIRMED',
+          status: 'PENDING',
           price: totalPrice,
           paymentStatus: 'PENDING',
           brokerDetails,
@@ -115,6 +140,36 @@ export async function POST(request: Request) {
           building
         }
       });
+    }
+
+    // 3.5 Auto-Assignment Logic (If exactly 1 photographer covers neighborhood + services)
+    if (!booking.photographerId && neighborhood && selectedServices && selectedServices.length > 0) {
+      const activePhotographers = await prisma.photographer.findMany({ where: { active: true } });
+      const coveredBy = activePhotographers.filter((p: any) => {
+        if (!p.neighborhoods) return false;
+        const cov = p.neighborhoods as any;
+        const search = neighborhood.trim().toLowerCase();
+
+        if (Array.isArray(cov)) {
+          return cov.some((n: string) => n.trim().toLowerCase() === search || n.trim().toLowerCase() === 'all');
+        } else if (typeof cov === 'object') {
+          return selectedServices.every((svc: string) => {
+            const svcList = cov[svc] || [];
+            if (!Array.isArray(svcList)) return false;
+            return svcList.some((n: string) => n.trim().toLowerCase() === search || n.trim().toLowerCase() === 'all');
+          });
+        }
+        return false;
+      });
+
+      if (coveredBy.length === 1) {
+        console.log(`🤖 Auto-assigning booking ${booking.protocol} to ${coveredBy[0].name} (Only option)`);
+        booking = await prisma.booking.update({
+          where: { id: booking.id },
+          data: { photographerId: coveredBy[0].id, status: 'CONFIRMED' },
+          include: { photographer: true } // Need photographer details for Tadabase sync
+        });
+      }
     }
 
     // 4. Enviar Email de Confirmação
@@ -146,9 +201,9 @@ export async function POST(request: Request) {
     });
 
     // 5. Integração com Tadabase (Service)
-    // Passamos o booking recém criado. O service lida com campos opcionais.
-    // Como acabou de criar, photographer é null/undefined, o que é correto.
-    await tadabase.syncBooking(booking);
+    // Passamos o booking recém criado e também propertyData (se existir).
+    // O service mapeará campos como Valor, Dormitórios, Situacao Apolar etc.
+    await tadabase.syncBooking(booking, propertyData);
 
     // 5. Retornar sucesso
     return NextResponse.json({

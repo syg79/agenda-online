@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
             // Check for existing bookings with this REF
             const bookings = await prisma.booking.findMany({
                 where: { notes: { contains: `Ref: ${ref}` } },
-                select: { id: true, date: true, status: true, clientName: true, services: true },
+                select: { id: true, date: true, time: true, status: true, clientName: true, services: true },
                 orderBy: { date: 'desc' },
                 take: 5
             });

@@ -101,6 +101,7 @@ function BookingForm({ companyName }: BookingFormProps) {
   const [clientEmail, setClientEmail] = useState('');
   const [clientPhone, setClientPhone] = useState('');
   const [brokerDetails, setBrokerDetails] = useState(''); // New State for field_177
+  const [apolarRef, setApolarRef] = useState<string>(''); // New State for Apolar Ref
 
   const [address, setAddress] = useState('');
   const [neighborhood, setNeighborhood] = useState('');
@@ -226,6 +227,9 @@ function BookingForm({ companyName }: BookingFormProps) {
 
   const [isSearching, setIsSearching] = useState(false);
   const searchTimeout = React.useRef<NodeJS.Timeout | null>(null);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [hasExistingBookings, setHasExistingBookings] = useState(false); // Controle facultativo de preços
+
 
   const handleAddressInput = (value: string) => {
     setAddress(value);
@@ -262,7 +266,6 @@ function BookingForm({ companyName }: BookingFormProps) {
   };
 
   const [isValidating, setIsValidating] = useState(false);
-  const [isConfirming, setIsConfirming] = useState(false);
 
   const validateAddress = async () => {
     // Explicitly reset coverage error (fixes false positives)
@@ -597,6 +600,16 @@ function BookingForm({ companyName }: BookingFormProps) {
     setIsConfirming(true);
     setError('');
 
+    if (hasExistingBookings) {
+      const ok = window.confirm(
+        "Tem certeza que deseja prosseguir?\n\nJá existe um agendamento para este imóvel. Ao confirmar, o(s) pedido(s) anterior(es) que estiver(em) pendente(s) ou confirmado(s) e ainda não realizado(s) será(ão) CANCELADO(S)."
+      );
+      if (!ok) {
+        setIsConfirming(false);
+        return;
+      }
+    }
+
     try {
       const bookingData = {
         clientName,
@@ -617,6 +630,7 @@ function BookingForm({ companyName }: BookingFormProps) {
 
         sourceProtocol: searchParams.get('protocol'), // Send original protocol if editing
         brokerDetails: brokerDetails, // Pass broker details to API
+        apolarRef, // Pass reference behind the scenes
         area,
         building,
         propertyType
@@ -733,7 +747,7 @@ function BookingForm({ companyName }: BookingFormProps) {
                     key={s}
                     onClick={() => isClickable && setStep(s)}
                     disabled={!isClickable}
-                    className="flex flex-col items-center flex-1 z-10 focus:outline-none group"
+                    className={'flex flex-col items-center flex-1 z-10 focus:outline-none group ' + (isClickable ? '' : 'cursor-not-allowed')}
                   >
                     <div
                       className={'w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300 ' +
@@ -819,16 +833,18 @@ function BookingForm({ companyName }: BookingFormProps) {
                 <ApolarRefSearch
                   compact
                   isAdmin={isAdmin}
-                  onPropertyFound={(data) => {
-                    setAddress(data.address || '');
-                    setNeighborhood(data.neighborhood || '');
+                  onPropertyFound={(data, currentBookings) => {
+                    if (data.address) setAddress(data.address);
+                    if (data.neighborhood) setNeighborhood(data.neighborhood);
                     setZipCode(data.zipCode || '');
                     setLatitude(data.latitude || null);
                     setLongitude(data.longitude || null);
-                    setComplement(data.complement || '');
+                    if (data.complement) setComplement(data.complement);
                     setArea(data.area || null);
                     setBuilding(data.building || '');
                     setPropertyType(data.propertyType || '');
+                    setApolarRef(data.ref || '');
+                    setHasExistingBookings(Array.isArray(currentBookings) && currentBookings.length > 0);
 
                     // User requested to NOT pre-fill notes with technical data
                     setNotes('');
@@ -843,6 +859,8 @@ function BookingForm({ companyName }: BookingFormProps) {
                     setArea(null);
                     setBuilding('');
                     setPropertyType('');
+                    setApolarRef('');
+                    setHasExistingBookings(false);
                     setNotes('');
                   }}
                 />
@@ -1097,9 +1115,9 @@ function BookingForm({ companyName }: BookingFormProps) {
                 </div>
                 {!isLoadingSlots && timeSlots.length === 0 && !error && (
                   <div className="col-span-full text-center py-6 space-y-4">
-                    <p className="text-slate-500">Nenhum horário encontrado para este dia.</p>
+                    <p className="text-slate-500 font-medium">Nenhum horário disponível para este dia.</p>
                     <div className="p-4 bg-orange-50 border border-orange-100 rounded-lg max-w-md mx-auto">
-                      <p className="text-sm text-orange-800 mb-3">Não encontrou o horário que desejava?</p>
+                      <p className="text-sm text-orange-800 mb-3">Tente selecionar uma <strong>nova data</strong> no passo anterior ou fale com a gente.</p>
                       <a
                         href={`https://wa.me/?text=Olá, tentei agendar para ${address} (${neighborhood}) em ${selectedDate.toLocaleDateString('pt-BR')} mas não encontrei horário. Podem me ajudar?`}
                         target="_blank"

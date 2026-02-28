@@ -190,6 +190,7 @@ export function DashboardSidebar({
                         const isReserved = order.status === 'RESERVED' || order.status === 'RESERVADO';
                         const isCompleted = order.status === 'REALIZADO' || order.status === 'COMPLETED';
                         const isActuallyPending = !order.photographerId || order.status === 'PENDING' || order.status === 'PENDENTE';
+                        const isActuallyConfirmed = isConfirmed && !isActuallyPending;
 
                         return (
                             <div
@@ -209,12 +210,12 @@ export function DashboardSidebar({
                                     <span className="text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700">
                                         #{order.protocol || order.id.substring(0, 6)}
                                     </span>
-                                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${isConfirmed ? 'text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/40' :
+                                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${isActuallyConfirmed ? 'text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/40' :
                                         isReserved ? 'text-purple-600 dark:text-purple-400 bg-purple-100 dark:bg-purple-900/40' :
                                             isCompleted ? 'text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/40' :
                                                 'text-orange-600 dark:text-orange-400 bg-orange-100 dark:bg-orange-900/40'
                                         }`}>
-                                        {order.status === 'PENDING' ? 'Pendente' : (order.status ? (order.status.charAt(0).toUpperCase() + order.status.slice(1).toLowerCase()) : (isActuallyPending ? 'Pendente' : 'Agendado'))}
+                                        {isActuallyPending ? 'Pendente' : (order.status ? (order.status.charAt(0).toUpperCase() + order.status.slice(1).toLowerCase()) : 'Agendado')}
                                     </span>
                                 </div>
 

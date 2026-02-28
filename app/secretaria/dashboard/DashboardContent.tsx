@@ -355,10 +355,9 @@ export default function SecretaryDashboard() {
 
     // counts for tabs
     const tabCounts = React.useMemo(() => ({
-        pending: data?.pending?.length || 0,
-        scheduled: data?.schedule?.filter(s => s.status === 'CONFIRMED').length || 0,
+        pending: (data?.pending || []).filter(s => s.status === 'PENDING' || s.status === 'PENDENTE').length,
+        scheduled: (data?.schedule?.filter(s => s.status === 'CONFIRMED' || s.status === 'AGENDADO').length || 0) + (data?.pending?.filter(s => s.status === 'CONFIRMED' || s.status === 'AGENDADO').length || 0),
         reserved: data?.schedule?.filter(s => s.status === 'RESERVED' || s.status === 'RESERVADO').length || 0,
-        // waiting: old status (REALIZADO/COMPLETED)
         waiting: data?.schedule?.filter(s => s.status === 'REALIZADO' || s.status === 'COMPLETED').length || 0,
         holding: data?.schedule?.filter(s => s.status === 'WAITING' || s.status === 'AGUARDANDO').length || 0,
         completed: data?.schedule?.filter(s => s.status === 'REALIZADO' || s.status === 'COMPLETED').length || 0
@@ -517,8 +516,12 @@ export default function SecretaryDashboard() {
                                 ...(data?.schedule || [])
                             ];
                         } else {
-                            if (activeTab === 'pending') baseItems = data?.pending || [];
-                            else if (activeTab === 'scheduled') baseItems = data?.schedule.filter((s: Booking) => s.status === 'CONFIRMED') || [];
+                            if (activeTab === 'pending') baseItems = (data?.pending || []).filter(s => s.status === 'PENDING' || s.status === 'PENDENTE');
+                            else if (activeTab === 'scheduled') {
+                                const scheduledWithPhoto = data?.schedule.filter((s: Booking) => s.status === 'CONFIRMED' || s.status === 'AGENDADO') || [];
+                                const scheduledWithoutPhoto = (data?.pending || []).filter((s: Booking) => s.status === 'CONFIRMED' || s.status === 'AGENDADO');
+                                baseItems = [...scheduledWithPhoto, ...scheduledWithoutPhoto];
+                            }
                             else if (activeTab === 'reserved') baseItems = data?.schedule.filter((s: Booking) => s.status === 'RESERVED' || s.status === 'RESERVADO') || [];
                             else if (activeTab === 'completed') baseItems = data?.schedule.filter((s: Booking) => s.status === 'REALIZADO' || s.status === 'COMPLETED') || [];
                             else if (activeTab === 'holding') baseItems = data?.schedule.filter((s: Booking) => s.status === 'WAITING' || s.status === 'AGUARDANDO') || [];

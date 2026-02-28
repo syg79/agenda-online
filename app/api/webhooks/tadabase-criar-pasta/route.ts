@@ -15,10 +15,20 @@ export async function POST(request: NextRequest) {
   try {
     const payload = await request.json();
 
-    const nomeFotografo  = payload.field_111;
-    const dataAgendamento = payload.field_106;
-    const nomeImovel    = payload.field_233;
-    const subpasta      = payload.field_234;
+    // Helper to extract string from Tadabase Connection fields
+    const getVal = (val: any) => {
+      if (!val) return null;
+      if (Array.isArray(val) && val.length > 0) {
+        return typeof val[0] === 'object' ? val[0].val : val[0];
+      }
+      if (typeof val === 'object' && val.val) return val.val;
+      return val;
+    };
+
+    const nomeFotografo = getVal(payload.field_111);
+    const dataAgendamento = getVal(payload.field_106);
+    const nomeImovel = getVal(payload.field_233);
+    const subpasta = getVal(payload.field_234);
 
     if (!nomeFotografo || !dataAgendamento || !nomeImovel) {
       return NextResponse.json(

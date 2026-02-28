@@ -360,7 +360,9 @@ export function SchedulingModal({
                         disabled={isPastDate}
                         className={`px-6 py-2 font-black text-[11px] uppercase tracking-widest rounded-lg transition-all shadow-md active:scale-95 ${isPastDate
                             ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
-                            : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-600/20'
+                            : isRescheduling
+                                ? 'bg-orange-600 text-white hover:bg-orange-700 shadow-orange-600/20'
+                                : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-600/20'
                             }`}
                     >
                         {isRescheduling ? 'Confirmar Reagendamento' : 'Confirmar Agendamento'}

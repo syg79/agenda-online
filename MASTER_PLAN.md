@@ -21,25 +21,22 @@ Este plano descreve o roteiro arquitetural global para migração total do siste
 - [ ] **2.A. Apolarbot 100% Online:** O script de scraping vira uma API nativa hospedada (agência digita REF, sistema busca dados).
 - [ ] **2.B. Formulário Expresso para Outros Clientes:** Interface rápida para clientes não-atacadistas preencherem seus pedidos no Supabase.
 
----
+### FASE 3: Desligamento do Cérebro Velho (Make.com e Webhooks Antigos)
+**Objetivo:** Extinguir a automação do Make.com e transferir toda a inteligência (pastas no drive, e-mails, entrega) para dentro da própria Agenda Online (Next.js).
 
-### FASE 3: Sincronização Bidirecional Complexa (Refatoração de Dados)
-**Objetivo:** Começar a lidar com o caos e desconstruir a "tabela de tudo" (Tadabase) e mapeá-la para o banco relacional elegante (Supabase).
-
-- [ ] **3.A. Mapeamento de Equivalências:** Scripts para ler os campos do Tadabase, limpar/transformar e escrever nas tabelas do Prisma (`Bookings`, `Clients`, `Properties`).
-- [ ] **3.B. Escrita Dupla Garantida:** Tudo inserido de novo (Agendas, Apolarbot) é replicado silenciosamente pro Tadabase.
-- [ ] **3.C. Sincronização Lendo o Legado:** Mudanças manuais feitas no Tadabase refletidas no Supabase quase em tempo real.
-
----
-
-### FASE 4: O Desligamento do Cérebro Velho (Make.com e Webhooks)
-**Objetivo:** Uma vez que os dados inseridos estão confiáveis, nós matamos a inteligência de automação de terceiros.
-
-- [ ] **4.A. Webhook Dispatcher Nativo (Vercel):** Implementar a Fila de Retentativas (`WebhookEvent`) no Supabase para lidar com falhas de rede.
-- [ ] **4.B. Automações de Mídia:** Dispatcher passa a criar pastas físicas no Google Drive e enviar links via Gmail.
-- [ ] **4.C. Morte das Rotinas no Make:** Desligamento oficial do Make.com e de seus limites, transferindo alertas para o Painel Novo.
+- [ ] **3.A. Dicionário de Dados 1:1:** A API da Agenda (`app/api/webhooks/tadabase-...`) passará a escutar os mesmos gatilhos do Make, precisando apenas alinhavar quais colunas (field_123) do Tadabase ela espera receber em seu formato.
+- [ ] **3.B. A Trava de Segurança (Origem dos Dados):**  Agenda Online enviará "Origem: agenda-online" pro Tadabase ao editar, e o Webhook do Tadabase terá uma trava "Não disparar se Origem for agenda-online" (Isso previne o temido Loop Infinito de automações).
+- [ ] **3.C. Go-Live Controlado (1 por 1):** Desligamos um módulo no Make, colamos nossa URL da API no painel do Tadabase, rodamos 1 simulação e validamos a pasta/entrega.
+- [ ] **3.D. Fila Encalhada ("Sincronizar Atrasados"):** O botão "Atualizar Lista" da secretaria usará o script (`tadabase-pull`) para não só atualizar os cards, mas acionar de modo autônomo as criações de pastas que bugaram no Make nos últimos dias.
 
 ---
+
+### FASE 4: Sincronização Bidirecional e Banco de Dados Limpo (Supabase)
+**Objetivo:** Somente após desligarmos o Make, entraremos na fase final onde os dados são espelhados de forma limpa pro Supabase, aprendendo com os erros de antigas migrações.
+
+- [ ] **4.A. Abordagem Anti-Trauma (Natividade vs Force Shift):** A antiga migração tentou espelhar 146 colunas cegamente via Python/n8n externo. Nossa migração 2.0 apenas escreve no banco prisma (`Bookings`, `Clients`, `Properties`) utilizando as rotas da própria aplicação Next.js local (já implementada em partes nas APIs). 
+- [ ] **4.B. Mapeamento de Faltantes:** Avaliaremos colunas secundárias ainda órfãs (Faturamento, etc) que o Supabase/Prisma ainda não possui.
+- [ ] **4.C. Escrita Dupla Desativada Gradualmente:** O Supabase vira mestre e o Tadabase passará a ser apêndice, não core.
 
 ### FASE 5: O Funeral e A Emancipação do Tadabase
 **Objetivo:** Substituir definitivamente os módulos visuais da secretaria, exportar histórico frio e cancelar o plano do Tadabase.
