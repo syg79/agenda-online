@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arquitetura do Sistema</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0e1a;
+    --surface: #111827;
+    --border: #1e2d40;
+    --accent: #00d4ff;
+    --accent2: #7c3aed;
+    --accent3: #10b981;
+    --accent4: #f59e0b;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --glow: 0 0 20px rgba(0, 212, 255, 0.3);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100vh;
+    padding: 40px 20px;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: 
+      radial-gradient(ellipse at 20% 20%, rgba(124, 58, 237, 0.08) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 80%, rgba(0, 212, 255, 0.06) 0%, transparent 60%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    max-width: 1300px;
+    margin: 0 auto;
+    position: relative;
+    z-index: 1;
+  }
+
+  h1 {
+    font-size: 2rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: var(--accent);
+    margin-bottom: 6px;
+    text-shadow: var(--glow);
+  }
+
+  .subtitle {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--muted);
+    margin-bottom: 40px;
+    letter-spacing: 0.1em;
+  }
+
+  .section-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.62rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 14px;
+    margin-top: 36px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .section-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* INFRA MAP */
+  .infra-map {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+  }
+
+  .infra-box {
+    border-radius: 12px;
+    padding: 14px;
+    border: 1px dashed;
+  }
+
+  .infra-box-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+
+  .infra-service {
+    background: var(--surface);
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+    border: 1px solid var(--border);
+  }
+
+  .infra-service:last-child { margin-bottom: 0; }
+  .infra-service-name { font-weight: 700; font-size: 0.78rem; margin-bottom: 2px; }
+  .infra-service-desc { font-family: 'JetBrains Mono', monospace; font-size: 0.58rem; color: var(--muted); line-height: 1.4; }
+
+  .infra-service-lang {
+    display: inline-block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.48rem;
+    padding: 1px 5px;
+    border-radius: 3px;
+    margin-top: 4px;
+    font-weight: 700;
+  }
+
+  .box-vercel   { border-color: rgba(0,212,255,0.25);  background: rgba(0,212,255,0.03); }
+  .box-vercel   .infra-box-title { color: var(--accent); }
+  .box-oracle   { border-color: rgba(245,158,11,0.25);  background: rgba(245,158,11,0.03); }
+  .box-oracle   .infra-box-title { color: var(--accent4); }
+  .box-railway  { border-color: rgba(124,58,237,0.25);  background: rgba(124,58,237,0.03); }
+  .box-railway  .infra-box-title { color: #a78bfa; }
+  .box-supabase { border-color: rgba(16,185,129,0.25);  background: rgba(16,185,129,0.03); }
+  .box-supabase .infra-box-title { color: var(--accent3); }
+  .box-apis     { border-color: rgba(236,72,153,0.25);  background: rgba(236,72,153,0.03); }
+  .box-apis     .infra-box-title { color: #f472b6; }
+
+  .lang-ts  { background: rgba(0,122,204,0.2); color: #60a5fa; }
+  .lang-py  { background: rgba(255,212,59,0.15); color: #fbbf24; }
+  .lang-js  { background: rgba(255,212,59,0.15); color: #fbbf24; }
+  .lang-api { background: rgba(236,72,153,0.15); color: #f472b6; }
+  .lang-sql { background: rgba(16,185,129,0.15); color: var(--accent3); }
+
+  /* MAIN DIAGRAM */
+  .diagram {
+    display: grid;
+    grid-template-columns: 1fr 44px 1fr 44px 1fr 44px 1fr 44px 1fr;
+    gap: 0;
+    align-items: start;
+  }
+
+  .layer { display: flex; flex-direction: column; gap: 10px; }
+
+  .layer-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.56rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+    padding-left: 4px;
+    border-left: 2px solid var(--border);
+    line-height: 1.4;
+  }
+
+  .node {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 11px 13px;
+    transition: all 0.2s;
+  }
+
+  .node:hover { border-color: var(--accent); box-shadow: 0 0 18px rgba(0,212,255,0.15); }
+
+  .node-icon { font-size: 1.2rem; margin-bottom: 4px; display: block; }
+  .node-title { font-weight: 700; font-size: 0.8rem; margin-bottom: 3px; }
+  .node-desc { font-family: 'JetBrains Mono', monospace; font-size: 0.6rem; color: var(--muted); line-height: 1.5; }
+  .node-badge {
+    display: inline-block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.5rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-top: 5px;
+    font-weight: 700;
+  }
+
+  .node-blue   { border-color: rgba(0,212,255,0.3); }
+  .node-blue   .node-badge { background: rgba(0,212,255,0.12); color: var(--accent); }
+  .node-purple { border-color: rgba(124,58,237,0.3); }
+  .node-purple .node-badge { background: rgba(124,58,237,0.12); color: #a78bfa; }
+  .node-green  { border-color: rgba(16,185,129,0.3); }
+  .node-green  .node-badge { background: rgba(16,185,129,0.12); color: var(--accent3); }
+  .node-amber  { border-color: rgba(245,158,11,0.3); }
+  .node-amber  .node-badge { background: rgba(245,158,11,0.12); color: var(--accent4); }
+  .node-red    { border-color: rgba(239,68,68,0.3); }
+  .node-red    .node-badge { background: rgba(239,68,68,0.12); color: #f87171; }
+  .node-teal   { border-color: rgba(20,184,166,0.3); }
+  .node-teal   .node-badge { background: rgba(20,184,166,0.12); color: #2dd4bf; }
+  .node-indigo { border-color: rgba(99,102,241,0.3); }
+  .node-indigo .node-badge { background: rgba(99,102,241,0.12); color: #818cf8; }
+  .node-pink   { border-color: rgba(236,72,153,0.3); }
+  .node-pink   .node-badge { background: rgba(236,72,153,0.12); color: #f472b6; }
+
+  .arrow-col {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-top: 40px;
+  }
+
+  .arrow { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; }
+
+  .arrow-line {
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(90deg, var(--border), var(--accent), var(--border));
+    position: relative;
+  }
+
+  .arrow-line::after {
+    content: '▶';
+    position: absolute;
+    right: -6px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--accent);
+    font-size: 8px;
+  }
+
+  .arrow-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.5rem;
+    color: var(--muted);
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  .section-box { border-radius: 12px; padding: 10px; }
+  .box-teal-s   { background: rgba(20,184,166,0.04);  border: 1px dashed rgba(20,184,166,0.25); }
+  .box-purple-s { background: rgba(124,58,237,0.04);  border: 1px dashed rgba(124,58,237,0.25); }
+  .box-indigo-s { background: rgba(99,102,241,0.04);  border: 1px dashed rgba(99,102,241,0.25); }
+
+  .box-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.56rem;
+    letter-spacing: 0.1em;
+    text-align: center;
+    margin-bottom: 10px;
+  }
+
+  .box-teal-s   .box-title { color: #2dd4bf; }
+  .box-purple-s .box-title { color: #a78bfa; }
+  .box-indigo-s .box-title { color: #818cf8; }
+
+  .v-arrow { text-align: center; font-size: 0.7rem; padding: 3px 0; opacity: 0.6; }
+  .box-purple-s .v-arrow { color: var(--accent2); }
+  .box-teal-s   .v-arrow { color: #2dd4bf; }
+  .box-indigo-s .v-arrow { color: #818cf8; }
+
+  .cache-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(236,72,153,0.08);
+    border: 1px solid rgba(236,72,153,0.25);
+    border-radius: 6px;
+    padding: 5px 9px;
+    margin-top: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.54rem;
+    color: #f472b6;
+  }
+
+  /* ESCALATION STRIP */
+  .escalation-strip {
+    margin-top: 28px;
+    background: rgba(239,68,68,0.04);
+    border: 1px dashed rgba(239,68,68,0.25);
+    border-radius: 12px;
+    padding: 16px 20px;
+  }
+
+  .escalation-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    color: #f87171;
+    letter-spacing: 0.1em;
+    margin-bottom: 14px;
+  }
+
+  .escalation-flow {
+    display: flex;
+    align-items: center;
+    gap: 0;
+  }
+
+  .esc-node {
+    background: var(--surface);
+    border: 1px solid rgba(239,68,68,0.3);
+    border-radius: 8px;
+    padding: 10px 12px;
+    text-align: center;
+    flex: 1;
+  }
+
+  .esc-node-icon { font-size: 1.1rem; margin-bottom: 4px; }
+  .esc-node-title { font-weight: 700; font-size: 0.75rem; margin-bottom: 3px; }
+  .esc-node-desc { font-family: 'JetBrains Mono', monospace; font-size: 0.56rem; color: var(--muted); line-height: 1.4; }
+  .esc-node-time { font-family: 'JetBrains Mono', monospace; font-size: 0.52rem; color: #f87171; margin-top: 4px; }
+
+  .esc-arrow {
+    width: 40px;
+    height: 2px;
+    background: linear-gradient(90deg, rgba(239,68,68,0.3), rgba(239,68,68,0.8), rgba(239,68,68,0.3));
+    position: relative;
+    flex-shrink: 0;
+    margin: 0 4px;
+  }
+
+  .esc-arrow::after {
+    content: '▶';
+    position: absolute;
+    right: -5px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #f87171;
+    font-size: 8px;
+  }
+
+  /* CONTEXT STRIP */
+  .context-strip {
+    margin-top: 16px;
+    background: rgba(99,102,241,0.04);
+    border: 1px dashed rgba(99,102,241,0.25);
+    border-radius: 12px;
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 0;
+  }
+
+  .ctx-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.58rem;
+    color: #818cf8;
+    letter-spacing: 0.1em;
+    white-space: nowrap;
+    margin-right: 20px;
+    min-width: 110px;
+  }
+
+  .ctx-flow { display: flex; align-items: center; gap: 0; flex: 1; }
+
+  .ctx-node {
+    background: var(--surface);
+    border: 1px solid rgba(99,102,241,0.3);
+    border-radius: 8px;
+    padding: 8px 12px;
+    text-align: center;
+    min-width: 110px;
+    flex: 1;
+  }
+
+  .ctx-node-title { font-weight: 700; font-size: 0.7rem; margin-bottom: 2px; }
+  .ctx-node-desc { font-family: 'JetBrains Mono', monospace; font-size: 0.54rem; color: var(--muted); line-height: 1.4; }
+
+  .ctx-arrow {
+    width: 30px;
+    height: 2px;
+    background: linear-gradient(90deg, rgba(99,102,241,0.3), rgba(99,102,241,0.8), rgba(99,102,241,0.3));
+    position: relative;
+    flex-shrink: 0;
+    margin: 0 3px;
+  }
+
+  .ctx-arrow::after {
+    content: '▶';
+    position: absolute;
+    right: -5px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #818cf8;
+    font-size: 8px;
+  }
+
+  /* BOTTOM GRID */
+  .bottom-grid {
+    margin-top: 28px;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 14px;
+  }
+
+  .bottom-grid-2 {
+    margin-top: 14px;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 14px;
+  }
+
+  .info-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 13px;
+  }
+
+  .info-card-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    padding-bottom: 7px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .info-row { display: flex; justify-content: space-between; align-items: flex-start; padding: 4px 0; gap: 8px; }
+  .info-row-label { color: var(--muted); font-family: 'JetBrains Mono', monospace; font-size: 0.6rem; white-space: nowrap; }
+  .info-row-value { font-weight: 700; font-size: 0.7rem; text-align: right; }
+
+  .cost-total {
+    margin-top: 7px;
+    padding-top: 7px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .consideration-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 13px;
+    grid-column: span 3;
+  }
+
+  .consideration-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-top: 10px;
+  }
+
+  .consideration-item {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+  }
+
+  .consideration-item-title {
+    font-weight: 700;
+    font-size: 0.75rem;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .consideration-item-desc {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.58rem;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  .flow-note {
+    margin-top: 20px;
+    background: rgba(16,185,129,0.04);
+    border: 1px solid rgba(16,185,129,0.18);
+    border-radius: 10px;
+    padding: 13px 17px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--muted);
+    line-height: 1.9;
+  }
+
+  .flow-note strong { color: var(--accent3); }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .pulse { animation: pulse 2s infinite; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <h1>Arquitetura do Sistema</h1>
+  <p class="subtitle">// INFRAESTRUTURA → FLUXO → ESCALONAMENTO → REVISÃO HUMANA</p>
+
+  <!-- INFRA MAP -->
+  <div class="section-title">infraestrutura</div>
+  <div class="infra-map">
+
+    <div class="infra-box box-vercel">
+      <div class="infra-box-title">☁ Vercel</div>
+      <div class="infra-service">
+        <div class="infra-service-name">Agenda App</div>
+        <div class="infra-service-desc">Frontend + API routes<br>sistema de agendamento</div>
+        <span class="infra-service-lang lang-ts">TypeScript</span>
+      </div>
+    </div>
+
+    <div class="infra-box box-supabase">
+      <div class="infra-box-title">🗄 Supabase</div>
+      <div class="infra-service">
+        <div class="infra-service-name">Database</div>
+        <div class="infra-service-desc">Pedidos, histórico<br>corretores, status, logs</div>
+        <span class="infra-service-lang lang-sql">PostgreSQL</span>
+      </div>
+    </div>
+
+    <div class="infra-box box-oracle">
+      <div class="infra-box-title">⚙ Oracle Cloud</div>
+      <div class="infra-service">
+        <div class="infra-service-name">Orquestrador</div>
+        <div class="infra-service-desc">Gmail + WA → LLM<br>contexto + escalonamento</div>
+        <span class="infra-service-lang lang-ts">TypeScript / Node</span>
+      </div>
+      <div class="infra-service">
+        <div class="infra-service-name">Crawler</div>
+        <div class="infra-service-desc">Já em execução</div>
+      </div>
+    </div>
+
+    <div class="infra-box box-railway">
+      <div class="infra-box-title">🚂 Railway (Hobby $5)</div>
+      <div class="infra-service">
+        <div class="infra-service-name">Evolution API</div>
+        <div class="infra-service-desc">WhatsApp Business<br>multi-device — 24h</div>
+        <span class="infra-service-lang lang-js">Node.js</span>
+      </div>
+      <div class="infra-service">
+        <div class="infra-service-name">TimeFold</div>
+        <div class="infra-service-desc">Otimização de rotas<br>sob demanda via HTTP</div>
+        <span class="infra-service-lang lang-py">Python</span>
+      </div>
+    </div>
+
+    <div class="infra-box box-apis">
+      <div class="infra-box-title">☁ APIs Externas</div>
+      <div class="infra-service">
+        <div class="infra-service-name">Claude API</div>
+        <div class="infra-service-desc">Haiku + Sonnet<br>prompt caching ativo</div>
+        <span class="infra-service-lang lang-api">Anthropic</span>
+      </div>
+      <div class="infra-service">
+        <div class="infra-service-name">Whisper API</div>
+        <div class="infra-service-desc">Transcrição de áudio</div>
+        <span class="infra-service-lang lang-api">OpenAI</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- FLOW DIAGRAM -->
+  <div class="section-title">fluxo de mensagens</div>
+  <div class="diagram">
+
+    <div class="layer">
+      <div class="layer-label">01 — Entrada</div>
+      <div class="node node-blue">
+        <span class="node-icon">📧</span>
+        <div class="node-title">Gmail</div>
+        <div class="node-desc">Gmail API<br>webhook / polling</div>
+        <span class="node-badge">~25/dia</span>
+      </div>
+      <div class="node node-green">
+        <span class="node-icon">💬</span>
+        <div class="node-title">WhatsApp Business</div>
+        <div class="node-desc">Evolution API<br>multi-device</div>
+        <span class="node-badge">~40/dia</span>
+      </div>
+    </div>
+
+    <div class="arrow-col">
+      <div class="arrow">
+        <div class="arrow-line"></div>
+        <div class="arrow-label">raw input</div>
+      </div>
+    </div>
+
+    <div class="layer">
+      <div class="layer-label">02 — Pré-processamento<br>(Oracle)</div>
+      <div class="section-box box-teal-s">
+        <div class="box-title">⚙ NORMALIZADOR</div>
+        <div class="node node-teal" style="margin-bottom:8px">
+          <span class="node-icon">⏱️</span>
+          <div class="node-title">Agrupador WA</div>
+          <div class="node-desc">Janela 2 min<br>agrupa fragmentos</div>
+        </div>
+        <div class="v-arrow">↓</div>
+        <div class="node node-teal" style="margin-bottom:8px">
+          <span class="node-icon">🎙️</span>
+          <div class="node-title">Whisper API</div>
+          <div class="node-desc">áudio → texto</div>
+          <span class="node-badge">~$0.006/min</span>
+        </div>
+        <div class="v-arrow">↓</div>
+        <div class="node node-teal">
+          <span class="node-icon">📎</span>
+          <div class="node-title">Anexos</div>
+          <div class="node-desc">PDF → ref.<br>foto → registra<br>vazio → pede info</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow-col">
+      <div class="arrow">
+        <div class="arrow-line"></div>
+        <div class="arrow-label">texto limpo</div>
+      </div>
+    </div>
+
+    <div class="layer">
+      <div class="layer-label">03 — Contexto<br>(Supabase)</div>
+      <div class="section-box box-indigo-s">
+        <div class="box-title">🔍 ENRIQUECIMENTO</div>
+        <div class="node node-indigo" style="margin-bottom:8px">
+          <span class="node-icon">💬</span>
+          <div class="node-title">Histórico</div>
+          <div class="node-desc">Últimas mensagens<br>do remetente</div>
+        </div>
+        <div class="v-arrow">↓</div>
+        <div class="node node-indigo" style="margin-bottom:8px">
+          <span class="node-icon">📋</span>
+          <div class="node-title">Pedidos em Aberto</div>
+          <div class="node-desc">Status e pendências<br>do corretor</div>
+        </div>
+        <div class="v-arrow">↓</div>
+        <div class="node node-indigo">
+          <span class="node-icon">📅</span>
+          <div class="node-title">Agenda / Slots</div>
+          <div class="node-desc">TimeFold via HTTP<br>disponibilidade real</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow-col">
+      <div class="arrow">
+        <div class="arrow-line"></div>
+        <div class="arrow-label">msg + contexto</div>
+      </div>
+    </div>
+
+    <div class="layer">
+      <div class="layer-label">04 — Ana (Oracle)</div>
+      <div class="section-box box-purple-s">
+        <div class="box-title">🧠 ORQUESTRADOR LLM</div>
+        <div class="node node-pink" style="margin-bottom:8px">
+          <span class="node-icon">👩‍💼</span>
+          <div class="node-title">Persona — Ana</div>
+          <div class="node-desc">Prompt fixo<br>humanizado</div>
+          <div class="cache-badge">⚡ prompt caching ativo</div>
+        </div>
+        <div class="v-arrow">↓</div>
+        <div class="node node-amber" style="margin-bottom:8px">
+          <span class="node-icon">🦔</span>
+          <div class="node-title">Claude Haiku</div>
+          <div class="node-desc">Classifica + responde<br>score de confiança</div>
+          <span class="node-badge">80% dos casos</span>
+        </div>
+        <div class="v-arrow">↓ confiança baixa</div>
+        <div class="node node-purple">
+          <span class="node-icon">🧠</span>
+          <div class="node-title">Claude Sonnet</div>
+          <div class="node-desc">Ambíguos<br>negociação / conflito</div>
+          <span class="node-badge">20% dos casos</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow-col">
+      <div class="arrow">
+        <div class="arrow-line"></div>
+        <div class="arrow-label">JSON + resposta</div>
+      </div>
+    </div>
+
+    <div class="layer">
+      <div class="layer-label">05 — Saída</div>
+      <div class="node node-green">
+        <span class="node-icon">✅</span>
+        <div class="node-title">Confirmação Auto</div>
+        <div class="node-desc">Ana responde<br>mesmo número WA<br>tom humanizado</div>
+        <span class="node-badge">casos simples</span>
+      </div>
+      <div class="node node-blue">
+        <span class="node-icon">🗄️</span>
+        <div class="node-title">Supabase</div>
+        <div class="node-desc">Registra pedido<br>log da decisão<br>atualiza status</div>
+      </div>
+      <div class="node node-red">
+        <span class="node-icon">⚠️</span>
+        <div class="node-title">Escalonamento</div>
+        <div class="node-desc">Grupo WA Business<br>+ timer ativo</div>
+        <span class="node-badge">exceções</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ESCALATION STRIP -->
+  <div class="section-title">fluxo de escalonamento</div>
+  <div class="escalation-strip">
+    <div class="escalation-title">⚠ TIMER DE ESCALONAMENTO — caso sem resposta humana</div>
+    <div class="escalation-flow">
+
+      <div class="esc-node">
+        <div class="esc-node-icon">⚠️</div>
+        <div class="esc-node-title">Caso identificado</div>
+        <div class="esc-node-desc">Ana não resolve<br>confiança baixa</div>
+        <div class="esc-node-time">t = 0</div>
+      </div>
+
+      <div class="esc-arrow"></div>
+
+      <div class="esc-node">
+        <div class="esc-node-icon">👥</div>
+        <div class="esc-node-title">Grupo WA Business</div>
+        <div class="esc-node-desc">Resumo + rascunho<br>qualquer membro resolve<br>1ª resposta vence</div>
+        <div class="esc-node-time">imediato</div>
+      </div>
+
+      <div class="esc-arrow"></div>
+
+      <div class="esc-node">
+        <div class="esc-node-icon">🔔</div>
+        <div class="esc-node-title">Alerta privado</div>
+        <div class="esc-node-desc">Mensagem direta<br>para seu número<br>pessoal</div>
+        <div class="esc-node-time pulse" style="color:#f59e0b">+ 15 min sem resposta</div>
+      </div>
+
+      <div class="esc-arrow"></div>
+
+      <div class="esc-node">
+        <div class="esc-node-icon">🚨</div>
+        <div class="esc-node-title">Alerta crítico</div>
+        <div class="esc-node-desc">Nome do corretor<br>tempo de espera<br>no grupo + direto</div>
+        <div class="esc-node-time pulse" style="color:#f87171">+ 30 min sem resposta</div>
+      </div>
+
+      <div class="esc-arrow"></div>
+
+      <div class="esc-node">
+        <div class="esc-node-icon">💬</div>
+        <div class="esc-node-title">Corretor informado</div>
+        <div class="esc-node-desc">Ana avisa que<br>está verificando<br>retorna em breve</div>
+        <div class="esc-node-time" style="color:var(--accent3)">sempre imediato</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- CONTEXT EXAMPLE -->
+  <div class="context-strip">
+    <div class="ctx-label">🔍 EXEMPLO<br>DE CONTEXTO</div>
+    <div class="ctx-flow">
+      <div class="ctx-node">
+        <div class="ctx-node-title">Msg recebida</div>
+        <div class="ctx-node-desc">"deu certo? 👆"</div>
+      </div>
+      <div class="ctx-arrow"></div>
+      <div class="ctx-node">
+        <div class="ctx-node-title">Histórico</div>
+        <div class="ctx-node-desc">pedido fotos<br>ref. 225679 15:06</div>
+      </div>
+      <div class="ctx-arrow"></div>
+      <div class="ctx-node">
+        <div class="ctx-node-title">Pendências</div>
+        <div class="ctx-node-desc">ref. 225679<br>aguardando agenda</div>
+      </div>
+      <div class="ctx-arrow"></div>
+      <div class="ctx-node">
+        <div class="ctx-node-title">Ana interpreta</div>
+        <div class="ctx-node-desc">👆 = pedido acima<br>responde com status</div>
+      </div>
+      <div class="ctx-arrow"></div>
+      <div class="ctx-node">
+        <div class="ctx-node-title">Corretor recebe</div>
+        <div class="ctx-node-desc">"Sim! Terça às<br>14h 😊"</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BOTTOM CARDS -->
+  <div class="section-title">custos e configurações</div>
+  <div class="bottom-grid">
+
+    <div class="info-card">
+      <div class="info-card-title" style="color: var(--accent)">💰 Custo Estimado / Mês</div>
+      <div class="info-row"><span class="info-row-label">Oracle Cloud</span><span class="info-row-value" style="color: var(--accent3)">$0</span></div>
+      <div class="info-row"><span class="info-row-label">Vercel / Supabase</span><span class="info-row-value" style="color: var(--accent3)">$0</span></div>
+      <div class="info-row"><span class="info-row-label">Railway Hobby</span><span class="info-row-value" style="color: var(--accent4)">~$5</span></div>
+      <div class="info-row"><span class="info-row-label">Claude Haiku + caching</span><span class="info-row-value" style="color: var(--accent4)">~$3</span></div>
+      <div class="info-row"><span class="info-row-label">Claude Sonnet</span><span class="info-row-value" style="color: var(--accent4)">~$6</span></div>
+      <div class="info-row"><span class="info-row-label">Whisper API</span><span class="info-row-value" style="color: var(--accent4)">~$2</span></div>
+      <div class="cost-total">
+        <span class="info-row-label">TOTAL</span>
+        <span class="info-row-value" style="color: var(--accent); font-size: 1rem;">~$16/mês</span>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title" style="color: #f472b6">👩‍💼 Persona — Ana</div>
+      <div class="info-row"><span class="info-row-label">Tom</span><span class="info-row-value" style="font-size:0.7rem">informal, prestativa</span></div>
+      <div class="info-row"><span class="info-row-label">Usa nome do corretor</span><span class="info-row-value" style="font-size:0.7rem; color:var(--accent3)">sim</span></div>
+      <div class="info-row"><span class="info-row-label">Emojis</span><span class="info-row-value" style="font-size:0.7rem">com moderação</span></div>
+      <div class="info-row"><span class="info-row-label">Horário comercial</span><span class="info-row-value" style="font-size:0.7rem">responde diferente</span></div>
+      <div class="info-row"><span class="info-row-label">Fora do escopo</span><span class="info-row-value" style="font-size:0.7rem">acolhe + redireciona</span></div>
+      <div class="info-row"><span class="info-row-label">Assuntos sensíveis</span><span class="info-row-value" style="font-size:0.7rem">não opina</span></div>
+      <div class="info-row"><span class="info-row-label">Número desconhecido</span><span class="info-row-value" style="font-size:0.7rem">pede identificação</span></div>
+      <div class="info-row"><span class="info-row-label">Prompt caching</span><span class="info-row-value" style="font-size:0.7rem; color:#f472b6">⚡ ativo</span></div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title" style="color: #f87171">⚠️ Escalonamento</div>
+      <div class="info-row"><span class="info-row-label">1º nível</span><span class="info-row-value" style="font-size:0.7rem">grupo WA Business</span></div>
+      <div class="info-row"><span class="info-row-label">Quem resolve</span><span class="info-row-value" style="font-size:0.7rem">qualquer membro</span></div>
+      <div class="info-row"><span class="info-row-label">Conflito de resposta</span><span class="info-row-value" style="font-size:0.7rem">1ª resposta vence</span></div>
+      <div class="info-row"><span class="info-row-label">Sem resposta 15min</span><span class="info-row-value" style="font-size:0.7rem; color:#f59e0b">alerta privado</span></div>
+      <div class="info-row"><span class="info-row-label">Sem resposta 30min</span><span class="info-row-value" style="font-size:0.7rem; color:#f87171">alerta crítico</span></div>
+      <div class="info-row"><span class="info-row-label">Corretor</span><span class="info-row-value" style="font-size:0.7rem">sempre informado</span></div>
+      <div class="info-row"><span class="info-row-label">Rascunho</span><span class="info-row-value" style="font-size:0.7rem">sempre pronto</span></div>
+    </div>
+
+  </div>
+
+  <!-- CONSIDERATIONS -->
+  <div class="section-title">pontos adicionais a considerar</div>
+  <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px;">
+    <div class="consideration-grid">
+
+      <div class="consideration-item">
+        <div class="consideration-item-title">🕐 Horário de Atendimento</div>
+        <div class="consideration-item-desc">Dentro do horário → Ana resolve normalmente. Fora → "Recebi sua mensagem, retorno amanhã às 8h". Feriados configuráveis.</div>
+      </div>
+
+      <div class="consideration-item">
+        <div class="consideration-item-title">🆕 Número Desconhecido</div>
+        <div class="consideration-item-desc">Ana pede identificação. Se não reconhecido no banco → alerta interno. Evita atender spam ou enganos.</div>
+      </div>
+
+      <div class="consideration-item">
+        <div class="consideration-item-title">🛡️ Rate Limiting</div>
+        <div class="consideration-item-desc">Limite de chamadas à API por janela de tempo. Protege contra picos inesperados e controla custo em situações anômalas.</div>
+      </div>
+
+      <div class="consideration-item">
+        <div class="consideration-item-title">📊 Métricas & Painel</div>
+        <div class="consideration-item-desc">% resolvido automaticamente, tempo médio de resposta, casos mais escalados. Painel simples no Supabase.</div>
+      </div>
+
+      <div class="consideration-item">
+        <div class="consideration-item-title">📝 Logs & Auditoria</div>
+        <div class="consideration-item-desc">Toda decisão da Ana registrada. Permite revisar erros, identificar padrões e melhorar o prompt ao longo do tempo.</div>
+      </div>
+
+      <div class="consideration-item">
+        <div class="consideration-item-title">🔁 Feedback Loop</div>
+        <div class="consideration-item-desc">Quando você corrige um rascunho antes de enviar, o dado é salvo. Com o tempo revela padrões de erro para ajuste do prompt.</div>
+      </div>
+
+      <div class="consideration-item">
+        <div class="consideration-item-title">📢 Mensagens em Massa</div>
+        <div class="consideration-item-desc">Evolution API suporta envio para lista de contatos cadastrados. Útil para avisos gerais a todos os corretores.</div>
+      </div>
+
+      <div class="consideration-item">
+        <div class="consideration-item-title">🆙 Onboarding Novo Corretor</div>
+        <div class="consideration-item-desc">Primeiro contato de número novo → Ana coleta nome e imobiliária → cria cadastro automaticamente no Supabase.</div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="flow-note">
+    <strong>WhatsApp Business multi-device:</strong> Evolution API conecta como dispositivo adicional — seu celular e outros dispositivos continuam funcionando normalmente. Corretores nunca percebem a mudança, mesmo número, mesma conversa.<br><br>
+    <strong>Escalonamento sem Telegram:</strong> tudo pelo próprio WhatsApp Business — grupo interno para revisão coletiva, mensagem direta para seu número pessoal nos alertas, alerta crítico se ninguém responder em 30 minutos. Zero ferramentas novas.<br><br>
+    <strong>Próximo passo:</strong> prompt completo da Ana com regras de comportamento, horário, limites e exemplos reais dos corretores.
+  </div>
+
+</div>
+</body>
+</html>

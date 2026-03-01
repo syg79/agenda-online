@@ -44,3 +44,19 @@ Este plano descreve o roteiro arquitetural global para migração total do siste
 - [ ] **5.A. Painéis Administrativos Finais:** Construção das telas de Faturas (Financeiro) e Relatórios Mensais em React.
 - [ ] **5.B. Exportação Definitiva de Histórico Frio:** Histórico adormecido do Tadabase extraído (scraping automatizado auxiliado por IA) e congelado no Supabase.
 - [ ] **5.C. Tchau Tadabase:** Encerramento do plano e extinção do banco legado. Fim da migração e início da fase 100% Inteligente (IA).
+
+---
+
+### FASE 6: Inteligência Artificial e Atendimento ("Ana")
+**Objetivo:** Substituir processos passivos por uma IA orquestradora que gerencia WhatsApp e Emails proativamente através de microsserviços na Oracle Cloud e Railway.
+
+- [ ] **6.A. Infraestrutura Multi-Device (Evolution API):** Subir e plugar a Evolution API na *Railway* gerenciando o número de WhatsApp Business da Secretaria de forma limpa e paralela a instâncias no celular.
+- [ ] **6.B. Pipeline LLM & Whisper (Oracle Cloud):** O cérebro Node.js da Ana rodando na Oracle para transcrição de áudios (Whisper) e classificação de intenções via Anthropic Claude (Haiku com fallback para Sonnet).
+- [ ] **6.C. Hub de Escalonamento Humano:** Sistema de alocação de "TimerBomb". Se a restrição falhar ou o score de confiança for baixo, o caso é jogado no grupo da equipe humana de fotografia imediatamente com resumo do ocorrido.
+
+### FASE 7: Ecossistema Global (Timefold & Portais B2B)
+**Objetivo:** Transcender o MVP criando portais corporativos logados e otimização de rotas logística.
+
+- [ ] **7.A. Otimização do Caixeiro Viajante (Timefold):** Tirar a lógica pesada em TS do cálculo linear geográfico e jogar para o Solver matemático `Timefold` alocado na *Railway*. Ele dirá ao Supabase "este fotógrafo cabe neste slot perfeitamente com 99% de margem".
+- [ ] **7.B. Área Logada: Painel da Imobiliária (Cliente):** Um dashboard clean (Vercel) para a imobiliária entrar com senha e puxar todos seus pedidos, fazer refações, alterar chaves ou reagendar sessoes, eliminando a centralização do WhatsApp.
+- [ ] **7.C. Área Logada: Área do Fotógrafo e Editores:** App responsivo listando a rota Pwa diária (estilo Uber), permitindo recusas ou aceite rápido, GPS nativo, e upload em batch para Editores terceirizados controlarem prazos e filas de retocagem via link de nuvem seguro.
